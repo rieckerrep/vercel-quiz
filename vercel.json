@@ -1,0 +1,11 @@
+{
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "framework": "vite",
+  "typescript": {
+    "version": "5.7.2",
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  }
+} 
