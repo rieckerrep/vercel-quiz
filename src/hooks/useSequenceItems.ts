@@ -33,14 +33,13 @@ export function useSequenceItems(questionId: number) {
         .order("position");
 
       if (error) {
-        throw error;
+        console.error("Error fetching sequence items:", error);
+        return;
       }
 
       if (data) {
         setItems(data.map((item) => item.text));
       }
-    } catch (error) {
-      console.error("Error fetching sequence items:", error);
     } finally {
       setLoading(false);
     }

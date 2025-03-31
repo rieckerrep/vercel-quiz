@@ -1,28 +1,71 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "./supabaseClient";
+import { Database } from "./types/supabase";
+
+type Question = Database['public']['Tables']['questions']['Row'];
 
 interface TrueFalseQuestionProps {
-  questionText: string;
-  correctAnswer: string;
+  questionId: number;
   onComplete: (isCorrect: boolean) => void;
 }
 
 const TrueFalseQuestion: React.FC<TrueFalseQuestionProps> = ({
-  questionText,
-  correctAnswer,
+  questionId,
   onComplete,
 }) => {
   const [userAnswer, setUserAnswer] = useState<string | null>(null);
+  const [questionData, setQuestionData] = useState<{
+    Frage: string;
+    "Richtige Antwort": string;
+  } | null>(null);
+
+  useEffect(() => {
+    async function loadQuestion() {
+      const { data, error } = await supabase
+        .from("questions")
+        .select("Frage, Richtige Antwort")
+        .eq("id", questionId)
+        .single<Pick<Question, 'Frage' | 'Richtige Antwort'>>();
+
+      if (error) {
+        console.error("Fehler beim Laden der Frage:", error);
+        return;
+      }
+
+      if (data && data.Frage && data["Richtige Antwort"]) {
+        setQuestionData({
+          Frage: data.Frage,
+          "Richtige Antwort": data["Richtige Antwort"]
+        });
+      } else {
+        console.error("Frage oder Antwort fehlen in den Daten");
+      }
+    }
+
+    loadQuestion();
+  }, [questionId]);
 
   const handleAnswer = (answer: string) => {
     setUserAnswer(answer);
-    const isCorrect = answer.toLowerCase() === correctAnswer.toLowerCase();
+    const isCorrect = answer.toLowerCase() === questionData?.["Richtige Antwort"].toLowerCase();
     onComplete(isCorrect);
   };
+
+  if (!questionData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center">
+          <div className="w-10 h-10 border-4 border-gray-800 border-t-transparent rounded-full animate-spin mb-3"></div>
+          <p className="text-gray-800 font-medium">Frage wird geladen...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-4">
       <div className="text-xl font-medium text-gray-800">
-        {questionText}
+        {questionData.Frage}
       </div>
       <div className="flex justify-between w-full gap-4">
         {["Richtig", "Falsch"].map((option) => (

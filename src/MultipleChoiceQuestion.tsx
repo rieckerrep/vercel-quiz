@@ -12,13 +12,11 @@ interface MCOption {
 
 interface MultipleChoiceQuestionProps {
   questionId: number; // ID der Frage in "questions"
-  questionText: string; // eigentlicher Fragetext
   onComplete: (overallCorrect: boolean) => void; // Callback, um dem QuizContainer das Ergebnis mitzuteilen
 }
 
 export default function MultipleChoiceQuestion({
   questionId,
-  questionText,
   onComplete,
 }: MultipleChoiceQuestionProps) {
   const [options, setOptions] = useState<MCOption[]>([]);
@@ -54,7 +52,7 @@ export default function MultipleChoiceQuestion({
     setSelected(newSelected);
   }
 
-  // Button „Antwort prüfen"
+  // Button "Antwort prüfen"
   function handleSubmit() {
     // Wir prüfen, ob alle is_correct==true ausgewählt und alle is_correct==false abgewählt sind
     const allCorrectSelected = options.every((opt) => {
@@ -105,7 +103,6 @@ export default function MultipleChoiceQuestion({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">{questionText}</h2>
         <div className="space-y-4 mb-6">
           {options.map((opt) => (
             <motion.div 

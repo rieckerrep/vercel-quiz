@@ -1,3 +1,5 @@
+import { motion } from "framer-motion";
+
 interface ProgressBarProps {
   progress: number; // Wert zwischen 0 und 100
 }

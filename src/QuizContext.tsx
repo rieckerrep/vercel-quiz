@@ -1,5 +1,5 @@
 // QuizContext.tsx
-import React, { createContext, useContext, useState, ReactNode, PropsWithChildren } from "react";
+import React, { createContext, useContext, useState, ReactNode } from "react";
 import { supabase } from "./supabaseClient";
 
 interface QuizContextType {
@@ -34,7 +34,7 @@ interface QuizProviderProps {
   children: ReactNode;
 }
 
-export const QuizProvider: React.FC<QuizProviderProps> = ({ children }) => {
+export const QuizProvider = ({ children }: QuizProviderProps) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [roundXp, setRoundXp] = useState(0);
   const [roundCoins, setRoundCoins] = useState(0);

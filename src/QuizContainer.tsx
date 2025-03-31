@@ -1,8 +1,7 @@
 // QuizContainer.tsx
-import React, { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useQuestions } from "./useQuestions";
 import { supabase } from "./supabaseClient";
-import { useQueryClient } from "@tanstack/react-query";
 import QuizHeadline from "./QuizHeadline";
 import JokerPanel from "./JokerPanel";
 import CasesQuestion, { CasesQuestionResult } from "./CasesQuestion";
@@ -23,6 +22,15 @@ import { Database } from "./types/supabase";
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
 
+interface Question {
+  id: number;
+  type: string;
+  Frage: string;
+  Begründung?: string;
+  "Richtige Antwort": string;
+  chapter_id: number;
+}
+
 interface QuizContainerProps {
   user: any; // Auth user type from Supabase
   profile: Profile;
@@ -30,17 +38,19 @@ interface QuizContainerProps {
   onOpenProfile: () => void;
   onOpenShop: () => void;
   onOpenLeaderboard: () => void;
+  onOpenSettings: () => void;
 }
 
 export function QuizContainer({
   user,
+  profile,
   onOpenProfile,
   onOpenShop,
   onOpenLeaderboard,
+  onOpenSettings,
 }: QuizContainerProps) {
   const chapterId = 1;
-  const { data: questions, isLoading: questionsLoading } =
-    useQuestions(chapterId);
+  const { data: questions, isLoading: questionsLoading } = useQuestions(chapterId);
 
   const [showExplanation, setShowExplanation] = useState(false);
   const [lastAnswerCorrect, setLastAnswerCorrect] = useState<boolean | null>(null);
@@ -77,8 +87,6 @@ export function QuizContainer({
 
   // currentQ muss vor der Verwendung deklariert werden
   const currentQ = questions?.[currentIndex];
-  
-  const queryClient = useQueryClient();
   
   // Stelle sicher, dass alle useEffect-Aufrufe immer vorhanden sind, 
   // nicht nur abhängig vom Fragetyp
@@ -201,11 +209,6 @@ export function QuizContainer({
     setUserInputAnswer("");
     setCurrentIndex(currentIndex + 1);
   }
-
-  // Invalidate userStats query when values change
-  useEffect(() => {
-    queryClient.invalidateQueries({ queryKey: ['userStats'] });
-  }, [roundXp, roundCoins, queryClient]);
 
   const handleAnswer = async (isCorrect: boolean) => {
     // Verhindern doppelter Ausführung während Animation läuft
@@ -371,44 +374,7 @@ export function QuizContainer({
         content = (
           <MultipleChoiceQuestion
             questionId={currentQ.id}
-            questionText={currentQ.Frage}
-            onComplete={async (isCorrect) => {
-                // Verhindern doppelter Ausführung während Animation läuft
-                if (isAnimationPlaying) return;
-                
-                // Hier NICHT handleTrueFalseAnswer verwenden, sondern die gleiche Logik direkt implementieren
-                console.log("QuizContainer - Von MultipleChoiceQuestion erhaltener isCorrect-Wert:", isCorrect);
-                
-                setLastAnswerCorrect(isCorrect);
-                setShowExplanation(true);
-                
-                const didAward = await awardNormal(currentQ.id, isCorrect);
-                if (didAward && globalUserStats) {
-                  // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
-                  setIsAnimationPlaying(true);
-                  
-                  const xpDelta = isCorrect ? 10 : 0;
-                  const coinDelta = isCorrect ? 1 : -1;
-                  setRoundXp((prev) => prev + xpDelta);
-                  setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-                  
-                  // Belohnungsanimation auslösen
-                  setRewardXp(isCorrect ? xpDelta : 0);
-                  setRewardCoins(isCorrect ? coinDelta : 0);
-                  setShowRewardAnimation(true);
-                  
-                  // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
-                  setTimeout(() => {
-                    setShowRewardAnimation(false);
-                    setIsAnimationPlaying(false);
-                  }, 2000);
-                  
-                  await updateUserStats({
-                    total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
-                    total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
-                  });
-                }
-            }}
+            onComplete={handleAnswer}
           />
         );
         break;
@@ -607,222 +573,93 @@ export function QuizContainer({
       )}
       
       {/* Kopfzeile mit Benutzerinfo und Statistiken */}
-      <QuizHeadline
-        onOpenProfile={onOpenProfile}
-        onOpenShop={onOpenShop}
-        onOpenLeaderboard={onOpenLeaderboard}
-        roundCoins={roundCoins}
-      />
-
-      {/* Fragen-Navigation */}
-      <div className="border-t-2 border-b-2 border-gray-300">
-        <QuestionNavigation
-          questions={questions}
-          userId={user.id}
-          currentIndex={currentIndex}
-          onSelectQuestion={(idx: number) => {
-            setCurrentIndex(idx);
-            setShowExplanation(false);
-            setLastAnswerCorrect(null);
-            setUserInputAnswer("");
-          }}
+      <div className="flex flex-col h-full">
+        <QuizHeadline 
+          user={user}
+          profile={profile || { username: null, avatar_url: null }}
+          onOpenProfile={onOpenProfile}
+          onOpenShop={onOpenShop}
+          onOpenSettings={onOpenSettings}
+          onOpenLeaderboard={onOpenLeaderboard}
         />
-      </div>
+        <div className="flex-1 overflow-auto">
+          {/* Fragen-Navigation */}
+          <div className="border-t-2 border-b-2 border-gray-300">
+            <QuestionNavigation
+              questions={questions}
+              userId={user.id}
+              currentIndex={currentIndex}
+              onSelectQuestion={(idx: number) => {
+                setCurrentIndex(idx);
+                setShowExplanation(false);
+                setLastAnswerCorrect(null);
+                setUserInputAnswer("");
+              }}
+            />
+          </div>
 
-      {/* Inhalt: 2-spaltig mit schwarzem und weißem Bereich */}
-      <div className="flex">
-        {/* Linke Spalte - Schwarzer Bereich mit Frage */}
-        <div className="w-[60%] bg-black text-white p-8 relative min-h-[600px] border-r-2 border-gray-400">
-          <div className="mb-12">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="text-xl font-bold whitespace-nowrap">
-                Frage {currentIndex + 1} von {questions?.length || 8}
-              </div>
-              
-              {/* Fortschrittsbalken */}
-              <div className="w-full h-3 bg-black border-2 border-yellow-400 flex-grow rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-yellow-400"
-                  style={{ width: `${progressPercentage}%` }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progressPercentage}%` }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
-                ></motion.div>
-              </div>
-            </div>
-            
-            <div className="text-2xl font-bold mt-8 leading-relaxed">
-              {currentQ?.Frage}
-            </div>
-            
-            {/* Erklärungscontainer für reguläre Fragen */}
-            {showExplanation && currentQ && currentQ.type !== "open_question" && (
-              <div className="mt-8 p-5 bg-gray-800 rounded-md border border-yellow-400">
-                <div className="flex items-center gap-3 mb-3">
-                  {lastAnswerCorrect === true ? (
-                    <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                      <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                  ) : (
-                    <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
-                      <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </div>
-                  )}
-                  <h3 className="text-xl font-bold text-white">
-                    {lastAnswerCorrect === true ? "Richtig!" : "Leider falsch"}
-                  </h3>
-                </div>
-                
-                <div className="text-white">
-                  <p className="mb-3">
-                    <span className="font-semibold">Richtige Antwort:</span> {currentQ["Richtige Antwort"]}
-                  </p>
-                  {currentQ.Begründung && (
-                    <div>
-                      <span className="font-semibold">Begründung:</span>
-                      <p className="mt-2">{currentQ.Begründung}</p>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Weiter-Button hinzufügen - während Animation deaktiviert */}
-                <div className="mt-6 flex justify-end">
-                  <button 
-                    onClick={handleNext}
-                    disabled={isAnimationPlaying}
-                    className={`px-6 py-2 font-medium rounded transition-colors ${
-                      isAnimationPlaying 
-                        ? "bg-gray-400 text-gray-700 cursor-not-allowed" 
-                        : "bg-yellow-400 text-black hover:bg-yellow-500"
-                    }`}
-                  >
-                    Weiter
-                  </button>
-                </div>
-              </div>
-            )}
-            
-            {/* Vergleichscontainer für OpenQuestion */}
-            {showExplanation && currentQ && currentQ.type === "open_question" && (
-              <div className="mt-8 p-5 bg-gray-800 rounded-md border border-yellow-400 overflow-y-auto max-h-[450px]">
-                <h3 className="text-lg font-bold mb-3 text-white">Vergleiche deine Antwort:</h3>
-                
-                <div className="mb-4">
-                  <h4 className="font-semibold text-white">Deine Antwort:</h4>
-                  <div className="p-3 bg-gray-700 border border-gray-600 rounded mt-1 text-white">
-                    {userInputAnswer || <em className="text-gray-400">Keine Antwort</em>}
+          {/* Inhalt: 2-spaltig mit schwarzem und weißem Bereich */}
+          <div className="flex">
+            {/* Linke Spalte - Schwarzer Bereich mit Frage */}
+            <div className="w-[60%] bg-black text-white p-8 relative min-h-[600px] border-r-2 border-gray-400">
+              <div className="mb-12">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="text-xl font-bold whitespace-nowrap">
+                    Frage {currentIndex + 1} von {questions?.length || 8}
+                  </div>
+                  
+                  {/* Fortschrittsbalken */}
+                  <div className="w-full h-3 bg-black border-2 border-yellow-400 flex-grow rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-yellow-400"
+                      style={{ width: `${progressPercentage}%` }}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${progressPercentage}%` }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
+                    ></motion.div>
                   </div>
                 </div>
                 
-                <div className="mb-4">
-                  <h4 className="font-semibold text-white">Musterlösung:</h4>
-                  <div className="p-3 bg-gray-700 border border-gray-600 rounded mt-1 text-white">
-                    {currentQ["Richtige Antwort"] || <em className="text-gray-400">Keine Musterlösung verfügbar</em>}
-                  </div>
+                <div className="text-2xl font-bold mt-8 leading-relaxed">
+                  {currentQ?.Frage}
                 </div>
                 
-                <div className="mt-5">
-                  <p className="mb-2 font-medium text-white">Wie bewertest du deine Antwort?</p>
-                  <div className="flex justify-between">
-                    <div className="flex gap-3">
-                      <button
-                        className={`py-2 px-6 rounded font-medium transition-colors flex items-center gap-2 ${
-                          lastAnswerCorrect === true
-                            ? "bg-green-500 text-white"
-                            : "bg-gray-700 hover:bg-green-500 text-white"
-                        }`}
-                        onClick={async () => {
-                          if (lastAnswerCorrect === null) {
-                            console.log("OpenQuestion - Antwort als richtig bewertet");
-                            setLastAnswerCorrect(true);
-                            
-                            // Direkt wie bei anderen Komponenten die Bewertung durchführen
-                            const didAward = await awardNormal(currentQ.id, true);
-                            if (didAward && globalUserStats) {
-                              const xpDelta = 10;
-                              const coinDelta = 1;
-                              setRoundXp((prev) => prev + xpDelta);
-                              setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-                              
-                              // Belohnungsanimation auslösen
-                              setRewardXp(xpDelta);
-                              setRewardCoins(coinDelta);
-                              setShowRewardAnimation(true);
-                              
-                              // Animation nach 2 Sekunden ausblenden
-                              setTimeout(() => {
-                                setShowRewardAnimation(false);
-                              }, 2000);
-                              
-                              await updateUserStats({
-                                total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
-                                total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
-                              });
-                            }
-                          }
-                        }}
-                        disabled={lastAnswerCorrect !== null}
-                      >
-                        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                {/* Erklärungscontainer für reguläre Fragen */}
+                {showExplanation && currentQ && currentQ.type !== "open_question" && (
+                  <div className="mt-8 p-5 bg-gray-800 rounded-md border border-yellow-400">
+                    <div className="flex items-center gap-3 mb-3">
+                      {lastAnswerCorrect === true ? (
+                        <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
                         </div>
-                        <span>Richtig</span>
-                      </button>
-                      <button
-                        className={`py-2 px-6 rounded font-medium transition-colors flex items-center gap-2 ${
-                          lastAnswerCorrect === false
-                            ? "bg-red-500 text-white"
-                            : "bg-gray-700 hover:bg-red-500 text-white"
-                        }`}
-                        onClick={async () => {
-                          if (lastAnswerCorrect === null) {
-                            console.log("OpenQuestion - Antwort als falsch bewertet");
-                            setLastAnswerCorrect(false);
-                            
-                            // Direkt wie bei anderen Komponenten die Bewertung durchführen
-                            const didAward = await awardNormal(currentQ.id, false);
-                            if (didAward && globalUserStats) {
-                              const xpDelta = 0;
-                              const coinDelta = -1;
-                              setRoundXp((prev) => prev + xpDelta);
-                              setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-                              
-                              // Belohnungsanimation auslösen
-                              setRewardXp(xpDelta);
-                              setRewardCoins(coinDelta);
-                              setShowRewardAnimation(true);
-                              
-                              // Animation nach 2 Sekunden ausblenden
-                              setTimeout(() => {
-                                setShowRewardAnimation(false);
-                              }, 2000);
-                              
-                              await updateUserStats({
-                                total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
-                                total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
-                              });
-                            }
-                          }
-                        }}
-                        disabled={lastAnswerCorrect !== null}
-                      >
-                        <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
-                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      ) : (
+                        <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
+                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                           </svg>
                         </div>
-                        <span>Falsch</span>
-                      </button>
+                      )}
+                      <h3 className="text-xl font-bold text-white">
+                        {lastAnswerCorrect === true ? "Richtig!" : "Leider falsch"}
+                      </h3>
                     </div>
                     
-                    {/* Weiter-Button für OpenQuestion */}
-                    {lastAnswerCorrect !== null && (
+                    <div className="text-white">
+                      <p className="mb-3">
+                        <span className="font-semibold">Richtige Antwort:</span> {currentQ["Richtige Antwort"]}
+                      </p>
+                      {currentQ.Begründung && (
+                        <div>
+                          <span className="font-semibold">Begründung:</span>
+                          <p className="mt-2">{currentQ.Begründung}</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Weiter-Button hinzufügen - während Animation deaktiviert */}
+                    <div className="mt-6 flex justify-end">
                       <button 
                         onClick={handleNext}
                         disabled={isAnimationPlaying}
@@ -834,58 +671,192 @@ export function QuizContainer({
                       >
                         Weiter
                       </button>
-                    )}
+                    </div>
                   </div>
-                </div>
+                )}
+                
+                {/* Vergleichscontainer für OpenQuestion */}
+                {showExplanation && currentQ && currentQ.type === "open_question" && (
+                  <div className="mt-8 p-5 bg-gray-800 rounded-md border border-yellow-400 overflow-y-auto max-h-[450px]">
+                    <h3 className="text-lg font-bold mb-3 text-white">Vergleiche deine Antwort:</h3>
+                    
+                    <div className="mb-4">
+                      <h4 className="font-semibold text-white">Deine Antwort:</h4>
+                      <div className="p-3 bg-gray-700 border border-gray-600 rounded mt-1 text-white">
+                        {userInputAnswer || <em className="text-gray-400">Keine Antwort</em>}
+                      </div>
+                    </div>
+                    
+                    <div className="mb-4">
+                      <h4 className="font-semibold text-white">Musterlösung:</h4>
+                      <div className="p-3 bg-gray-700 border border-gray-600 rounded mt-1 text-white">
+                        {currentQ["Richtige Antwort"] || <em className="text-gray-400">Keine Musterlösung verfügbar</em>}
+                      </div>
+                    </div>
+                    
+                    <div className="mt-5">
+                      <p className="mb-2 font-medium text-white">Wie bewertest du deine Antwort?</p>
+                      <div className="flex justify-between">
+                        <div className="flex gap-3">
+                          <button
+                            className={`py-2 px-6 rounded font-medium transition-colors flex items-center gap-2 ${
+                              lastAnswerCorrect === true
+                                ? "bg-green-500 text-white"
+                                : "bg-gray-700 hover:bg-green-500 text-white"
+                            }`}
+                            onClick={async () => {
+                              if (lastAnswerCorrect === null) {
+                                console.log("OpenQuestion - Antwort als richtig bewertet");
+                                setLastAnswerCorrect(true);
+                                
+                                // Direkt wie bei anderen Komponenten die Bewertung durchführen
+                                const didAward = await awardNormal(currentQ.id, true);
+                                if (didAward && globalUserStats) {
+                                  const xpDelta = 10;
+                                  const coinDelta = 1;
+                                  setRoundXp((prev) => prev + xpDelta);
+                                  setRoundCoins((prev) => Math.max(0, prev + coinDelta));
+                                  
+                                  // Belohnungsanimation auslösen
+                                  setRewardXp(xpDelta);
+                                  setRewardCoins(coinDelta);
+                                  setShowRewardAnimation(true);
+                                  
+                                  // Animation nach 2 Sekunden ausblenden
+                                  setTimeout(() => {
+                                    setShowRewardAnimation(false);
+                                  }, 2000);
+                                  
+                                  await updateUserStats({
+                                    total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
+                                    total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
+                                  });
+                                }
+                              }
+                            }}
+                            disabled={lastAnswerCorrect !== null}
+                          >
+                            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </div>
+                            <span>Richtig</span>
+                          </button>
+                          <button
+                            className={`py-2 px-6 rounded font-medium transition-colors flex items-center gap-2 ${
+                              lastAnswerCorrect === false
+                                ? "bg-red-500 text-white"
+                                : "bg-gray-700 hover:bg-red-500 text-white"
+                            }`}
+                            onClick={async () => {
+                              if (lastAnswerCorrect === null) {
+                                console.log("OpenQuestion - Antwort als falsch bewertet");
+                                setLastAnswerCorrect(false);
+                                
+                                // Direkt wie bei anderen Komponenten die Bewertung durchführen
+                                const didAward = await awardNormal(currentQ.id, false);
+                                if (didAward && globalUserStats) {
+                                  const xpDelta = 0;
+                                  const coinDelta = -1;
+                                  setRoundXp((prev) => prev + xpDelta);
+                                  setRoundCoins((prev) => Math.max(0, prev + coinDelta));
+                                  
+                                  // Belohnungsanimation auslösen
+                                  setRewardXp(xpDelta);
+                                  setRewardCoins(coinDelta);
+                                  setShowRewardAnimation(true);
+                                  
+                                  // Animation nach 2 Sekunden ausblenden
+                                  setTimeout(() => {
+                                    setShowRewardAnimation(false);
+                                  }, 2000);
+                                  
+                                  await updateUserStats({
+                                    total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
+                                    total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
+                                  });
+                                }
+                              }
+                            }}
+                            disabled={lastAnswerCorrect !== null}
+                          >
+                            <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+                              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </div>
+                            <span>Falsch</span>
+                          </button>
+                        </div>
+                        
+                        {/* Weiter-Button für OpenQuestion */}
+                        {lastAnswerCorrect !== null && (
+                          <button 
+                            onClick={handleNext}
+                            disabled={isAnimationPlaying}
+                            className={`px-6 py-2 font-medium rounded transition-colors ${
+                              isAnimationPlaying 
+                                ? "bg-gray-400 text-gray-700 cursor-not-allowed" 
+                                : "bg-yellow-400 text-black hover:bg-yellow-500"
+                            }`}
+                          >
+                            Weiter
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
 
-        {/* Rechte Spalte - Weißer Bereich mit Antworten */}
-        <div className="w-[40%] bg-white p-8 flex flex-col items-center justify-start pt-16 relative min-h-[600px]">
-          {/* Container für den Hauptinhalt, der den Raum für die Joker am unteren Rand lässt */}
-          <div className="w-full mb-24">
-            {currentQ?.type === "open_question" ? (
-              // Nur die Eingabe für offene Fragen im weißen Bereich
-              <div className="w-full">{content}</div>
-            ) : currentQ?.type === "true_false" ? (
-              <div className="w-full flex flex-col gap-6">
-                <button
-                  onClick={async () => {
-                    await handleTrueFalseAnswer(true);
-                  }}
-                  className="w-full py-5 px-6 border-2 border-black text-black bg-white text-center font-medium text-lg rounded-none hover:bg-gray-100 transition-colors"
-                >
-                  Richtig
-                </button>
-                <button
-                  onClick={async () => {
-                    await handleTrueFalseAnswer(false);
-                  }}
-                  className="w-full py-5 px-6 border-2 border-black text-black bg-white text-center font-medium text-lg rounded-none hover:bg-gray-100 transition-colors"
-                >
-                  Falsch
-                </button>
+            {/* Rechte Spalte - Weißer Bereich mit Antworten */}
+            <div className="w-[40%] bg-white p-8 flex flex-col items-center justify-start pt-16 relative min-h-[600px]">
+              {/* Container für den Hauptinhalt, der den Raum für die Joker am unteren Rand lässt */}
+              <div className="w-full mb-24">
+                {currentQ?.type === "open_question" ? (
+                  // Nur die Eingabe für offene Fragen im weißen Bereich
+                  <div className="w-full">{content}</div>
+                ) : currentQ?.type === "true_false" ? (
+                  <div className="w-full flex flex-col gap-6">
+                    <button
+                      onClick={async () => {
+                        await handleTrueFalseAnswer(true);
+                      }}
+                      className="w-full py-5 px-6 border-2 border-black text-black bg-white text-center font-medium text-lg rounded-none hover:bg-gray-100 transition-colors"
+                    >
+                      Richtig
+                    </button>
+                    <button
+                      onClick={async () => {
+                        await handleTrueFalseAnswer(false);
+                      }}
+                      className="w-full py-5 px-6 border-2 border-black text-black bg-white text-center font-medium text-lg rounded-none hover:bg-gray-100 transition-colors"
+                    >
+                      Falsch
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-full">{content}</div>
+                )}
               </div>
-            ) : (
-              <div className="w-full">{content}</div>
-            )}
-          </div>
-          
-          {/* Joker im unteren Bereich der weißen Seite */}
-          <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2">
-            <JokerPanel 
-              xpBoostUsed={xpBoostUsed}
-              streakBoostUsed={streakBoostUsed}
-              hintUsed={hintUsed}
-              fiftyFiftyUsed={fiftyFiftyUsed}
-              handleXpBoostClick={() => setXpBoostUsed(true)}
-              handleStreakBoostClick={() => setStreakBoostUsed(true)}
-              handleHintClick={() => setHintUsed(true)}
-              handleFiftyFiftyClick={() => setFiftyFiftyUsed(true)}
-              disabled={showExplanation}
-            />
+              
+              {/* Joker im unteren Bereich der weißen Seite */}
+              <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2">
+                <JokerPanel 
+                  xpBoostUsed={xpBoostUsed}
+                  streakBoostUsed={streakBoostUsed}
+                  hintUsed={hintUsed}
+                  fiftyFiftyUsed={fiftyFiftyUsed}
+                  handleXpBoostClick={() => setXpBoostUsed(true)}
+                  handleStreakBoostClick={() => setStreakBoostUsed(true)}
+                  handleHintClick={() => setHintUsed(true)}
+                  handleFiftyFiftyClick={() => setFiftyFiftyUsed(true)}
+                  disabled={showExplanation}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>

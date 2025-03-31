@@ -2,6 +2,12 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import "./ShopScreen.css";
 import { supabase } from "./supabaseClient";
+import { useUserStats } from "./useUserStats";
+import { useQuiz } from "./QuizContext";
+import { Database } from "./types/supabase";
+
+type Profile = Database['public']['Tables']['profiles']['Row'];
+type UserStats = Database['public']['Tables']['user_stats']['Row'];
 
 interface Notification {
   message: string;
@@ -18,28 +24,16 @@ interface ShopAvatar {
 }
 
 interface ShopScreenProps {
-  userId: string;
-  profile: {
-    username: string;
-    avatar_url: string;
-    id: string;
-  };
-  userStats: {
-    total_xp: number;
-    total_coins: number;
-  };
-  onBack: () => void;
-  updateUserStats: (updates: { total_xp: number; total_coins: number }) => void;
-  updateActiveAvatar: (avatarUrl: string) => void;
+  user: any;
+  onClose: () => void;
+  onOpenProfile: () => void;
 }
 
-export function ShopScreen({
-  onBack,
-  userId,
-  userStats,
-  updateUserStats,
-  updateActiveAvatar,
-}: ShopScreenProps) {
+const ShopScreen: React.FC<ShopScreenProps> = ({
+  user,
+  onClose,
+  onOpenProfile,
+}) => {
   const [shopAvatars, setShopAvatars] = useState<ShopAvatar[]>([]);
   const [ownedAvatars, setOwnedAvatars] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -47,7 +41,9 @@ export function ShopScreen({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [animating, setAnimating] = useState(false);
   const [notification, setNotification] = useState<Notification | null>(null);
-  
+  const { userStats, refetch: refetchUserStats } = useUserStats(user?.id);
+  const { roundCoins, setRoundCoins } = useQuiz();
+
   // Funktion zur Korrektur der Image-URLs - nur für URL-Formatkorrektur
   const fixImageUrl = (url: string): string => {
     // URL-Format korrigieren
@@ -99,12 +95,12 @@ export function ShopScreen({
   }, []);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!user?.id) return;
     (async () => {
       const { data, error } = await supabase
         .from("user_avatars")
         .select("avatar_id")
-        .eq("user_id", userId);
+        .eq("user_id", user.id);
       if (!error && data) {
         const owned = new Set<number>();
         data.forEach((row: any) => {
@@ -113,7 +109,7 @@ export function ShopScreen({
         setOwnedAvatars(owned);
       }
     })();
-  }, [userId]);
+  }, [user?.id]);
 
   const categories = Array.from(
     new Set(shopAvatars.map((a) => a.category))
@@ -138,12 +134,16 @@ export function ShopScreen({
     }
   });
 
+  const hasEnoughCoins = (coins: number | null | undefined, price: number): boolean => {
+    return coins !== null && coins !== undefined && coins >= price;
+  };
+
   async function handleBuyOrSelect(avatar: ShopAvatar) {
     if (animating) return;
     
     setAnimating(true);
     
-    if (!userStats) {
+    if (!userStats?.total_coins) {
       setNotification({
         message: "Keine User-Stats verfügbar!",
         type: "error",
@@ -157,14 +157,14 @@ export function ShopScreen({
       const { error } = await supabase
         .from("profiles")
         .update({ avatar_url: avatar.image_url })
-        .eq("id", userId);
+        .eq("id", user.id);
       if (error) {
         setNotification({
           message: "Fehler beim Setzen des Avatars.",
           type: "error",
         });
       } else {
-        updateActiveAvatar(avatar.image_url);
+        setRoundCoins(userStats.total_coins);
         setNotification({
           message: "Avatar erfolgreich ausgewählt!",
           type: "success",
@@ -174,7 +174,7 @@ export function ShopScreen({
       return;
     }
     
-    if (userStats.total_coins < avatar.price) {
+    if (!hasEnoughCoins(userStats.total_coins, avatar.price)) {
       setNotification({ message: "Nicht genügend Münzen!", type: "error" });
       setAnimating(false);
       return;
@@ -193,7 +193,7 @@ export function ShopScreen({
     const { error: updateError } = await supabase
       .from("user_stats")
       .update({ total_coins: newCoins })
-      .eq("user_id", userId);
+      .eq("user_id", user.id);
       
     if (updateError) {
       setNotification({
@@ -206,7 +206,7 @@ export function ShopScreen({
     
     const { error: insertError } = await supabase
       .from("user_avatars")
-      .insert([{ user_id: userId, avatar_id: avatar.id }]);
+      .insert([{ user_id: user.id, avatar_id: avatar.id }]);
       
     if (insertError) {
       setNotification({
@@ -218,10 +218,7 @@ export function ShopScreen({
     }
     
     setOwnedAvatars((prev) => new Set(prev).add(avatar.id));
-    updateUserStats({
-      total_xp: userStats.total_xp,
-      total_coins: newCoins,
-    });
+    refetchUserStats();
     
     setNotification({
       message: "Avatar erfolgreich gekauft!",
@@ -280,9 +277,12 @@ export function ShopScreen({
       <div className="flex flex-col h-full w-full">
         <div className="bg-[#10131c] text-white p-4 flex justify-between items-center shadow-md w-full">
           <button
-            onClick={onBack}
+            onClick={onClose}
             className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition duration-300 flex items-center gap-2"
           >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+            </svg>
             Zurück
           </button>
           <h1 className="text-2xl font-bold">Avatar-Shop</h1>
@@ -337,7 +337,7 @@ export function ShopScreen({
               <div className="mt-6 p-3 bg-[#2d3748] border border-yellow-800 rounded-md">
                 <p className="text-white font-medium flex items-center gap-2">
                   <span>Deine Münzen:</span>
-                  <span className="text-yellow-400 font-bold">{userStats ? userStats.total_coins : 0}</span>
+                  <span className="text-yellow-400 font-bold">{userStats?.total_coins ?? 0}</span>
                   <span className="text-yellow-400 text-lg">🪙</span>
                 </p>
               </div>
@@ -446,16 +446,16 @@ export function ShopScreen({
                             className={`w-full py-2 rounded-lg font-medium ${
                               isOwned
                                 ? "bg-blue-600 hover:bg-blue-700 text-white"
-                                : userStats && userStats.total_coins >= avatar.price
+                                : hasEnoughCoins(userStats?.total_coins, avatar.price)
                                 ? "bg-green-600 hover:bg-green-700 text-white"
                                 : "bg-gray-700 text-gray-400 cursor-not-allowed"
                             }`}
                             onClick={() => handleBuyOrSelect(avatar)}
-                            disabled={!isOwned && (!userStats || userStats.total_coins < avatar.price)}
-                            whileHover={{ scale: isOwned || (userStats && userStats.total_coins >= avatar.price) ? 1.05 : 1 }}
-                            whileTap={{ scale: isOwned || (userStats && userStats.total_coins >= avatar.price) ? 0.95 : 1 }}
+                            disabled={!isOwned && !hasEnoughCoins(userStats?.total_coins, avatar.price)}
+                            whileHover={{ scale: isOwned || hasEnoughCoins(userStats?.total_coins, avatar.price) ? 1.05 : 1 }}
+                            whileTap={{ scale: isOwned || hasEnoughCoins(userStats?.total_coins, avatar.price) ? 0.95 : 1 }}
                           >
-                            {isOwned ? "Auswählen" : userStats && userStats.total_coins >= avatar.price ? "Kaufen" : "Nicht genug Münzen"}
+                            {isOwned ? "Auswählen" : hasEnoughCoins(userStats?.total_coins, avatar.price) ? "Kaufen" : "Nicht genug Münzen"}
                           </motion.button>
                         </div>
                       </motion.div>

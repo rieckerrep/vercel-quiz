@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient"; // Pfad ggf. anpassen
 import { motion, AnimatePresence } from "framer-motion";
 import "./ProfileScreen.css";

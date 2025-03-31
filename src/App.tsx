@@ -12,9 +12,8 @@ function App() {
   const [userId, setUserId] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
   const [activeScreen, setActiveScreen] = useState<
-    "quiz" | "profile" | "shop" | "leaderboard"
+    "quiz" | "profile" | "shop" | "leaderboard" | "settings"
   >("quiz");
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
   
   const queryClient = useQueryClient();
 
@@ -121,6 +120,7 @@ function App() {
             onOpenProfile={() => setActiveScreen("profile")}
             onOpenShop={() => setActiveScreen("shop")}
             onOpenLeaderboard={() => setActiveScreen("leaderboard")}
+            onOpenSettings={() => setActiveScreen("settings")}
           />
         </div>
       )}
@@ -141,20 +141,9 @@ function App() {
       {activeScreen === "shop" && (
         <div className="absolute top-0 left-0 w-full min-h-screen bg-lightBg p-4">
           <ShopScreen
-            userId={userId!}
-            profile={profileData}
-            userStats={userStatsData}
-            onBack={() => setActiveScreen("quiz")}
-            updateUserStats={() => {
-              queryClient.invalidateQueries({
-                queryKey: ["userStats", userId]
-              });
-            }}
-            updateActiveAvatar={() => {
-              queryClient.invalidateQueries({
-                queryKey: ["profile", userId]
-              });
-            }}
+            user={user}
+            onClose={() => setActiveScreen("quiz")}
+            onOpenProfile={() => setActiveScreen("profile")}
           />
         </div>
       )}

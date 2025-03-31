@@ -17,6 +17,9 @@ import settingsIcon from './Bilder/Community/Einstellungen.svg';
 // Hinweis: Hier sollte später eine echte Waage-SVG-Datei importiert werden
 const scaleIcon = "https://lqoulygftdjbnfxkrihy.supabase.co/storage/v1/object/public/quiz-assets//waage.svg";
 
+// Default Avatar
+import defaultAvatar from './Bilder/default-avatar.svg';
+
 export {
   // Medaillen
   goldMedal,
@@ -34,5 +37,8 @@ export {
   settingsIcon,
   
   // Andere Icons
-  scaleIcon
+  scaleIcon,
+  
+  // Default Avatar
+  defaultAvatar
 }; 
