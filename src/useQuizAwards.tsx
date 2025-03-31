@@ -1,5 +1,5 @@
 // useQuizAwards.ts
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
 
 export function useQuizAwards(userId: string) {
