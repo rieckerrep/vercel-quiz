@@ -1,5 +1,5 @@
 // OpenQuestion.tsx
-import { useState } from "react";
+import { useState } from 'react';
 
 interface OpenQuestionProps {
   questionText: string; // z.B. "Was bedeutet Rechtfertigung?"

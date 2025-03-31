@@ -1,5 +1,5 @@
 // src/components/LeagueLeaderboard.tsx
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 
 interface LeagueRow {

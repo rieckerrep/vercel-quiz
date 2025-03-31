@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useDrag, useDrop, DndProvider } from "react-dnd";
+import { useState, useEffect, useRef } from "react";
+import { useDrag, useDrop, DndProvider, ConnectDragSource, ConnectDropTarget } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { supabase } from "./supabaseClient";
 import { motion } from "framer-motion";
@@ -45,7 +45,7 @@ const DraggableItem: React.FC<DraggableItemProps> = ({ pair, isDropped }) => {
   );
 
   return (
-    <div ref={drag as any}>
+    <div ref={drag as unknown as React.Ref<HTMLDivElement>}>
       <motion.div
         className={`
           p-3 rounded-md shadow-sm mb-3 select-none
@@ -102,7 +102,7 @@ const DropTarget: React.FC<DropTargetProps> = ({ pair, onDrop, isMatched }) => {
   ].join(' ');
 
   return (
-    <div ref={drop as any}>
+    <div ref={drop as unknown as React.Ref<HTMLDivElement>}>
       <motion.div
         className={targetClasses}
         initial={{ scale: 1 }}

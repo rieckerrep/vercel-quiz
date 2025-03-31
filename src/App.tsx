@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import "./index.css";
+import { LoginScreen } from "./LoginScreen";
 import QuizContainer from "./QuizContainer";
-import LoginScreen from "./LoginScreen";
 import ProfileScreen from "./ProfileScreen";
 import ShopScreen from "./ShopScreen";
 import LeaderboardOverlay from "./LeaderboardOverlay";
