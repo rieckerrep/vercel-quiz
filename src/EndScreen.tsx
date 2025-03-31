@@ -32,7 +32,7 @@ interface UserStats {
 
 interface LevelData {
   id: number;
-  name: string;
+  level_title: string;
   xp_required: number;
   level_image: string;
 }
@@ -63,17 +63,20 @@ export default function EndScreen({
   const [levelData, setLevelData] = useState<LevelData | null>(null);
   const [leagueData, setLeagueData] = useState<LeagueData | null>(null);
 
+  // Kreis-Fortschritt für nächstes Level
+  const circleCircumference = 100;
+  const [nextLevelXP, setNextLevelXP] = useState<number | null>(null);
+  const [circleDashValue, setCircleDashValue] = useState(0);
+
+  const [isLevelUp, setIsLevelUp] = useState(false);
+  const [previousLevel, setPreviousLevel] = useState<number | null>(null);
+
   // Animierte Medaillen-Zähler
   const [animatedMedalCounts, setAnimatedMedalCounts] = useState<{
     gold: number;
     silver: number;
     bronze: number;
   }>({ gold: 0, silver: 0, bronze: 0 });
-
-  // Kreis-Fortschritt für nächstes Level
-  const [levelCircleDash, setLevelCircleDash] = useState(0);
-  const circleCircumference = 100;
-  const [nextLevelXP, setNextLevelXP] = useState<number | null>(null);
 
   // Animation für den Fortschrittsbalken
   useEffect(() => {
@@ -123,14 +126,25 @@ export default function EndScreen({
         )
         .eq("user_id", user.id)
         .maybeSingle();
-      setStats({
-        gold: statsData?.gold_medals || 0,
-        silver: statsData?.silver_medals || 0,
-        bronze: statsData?.bronze_medals || 0,
-        total_xp: statsData?.total_xp || 0,
-        level: statsData?.level || 1,
-        current_league: statsData?.current_league || "Holzliga",
-      });
+
+      if (statsData) {
+        // Stats setzen
+        setStats({
+          gold: statsData.gold_medals || 0,
+          silver: statsData.silver_medals || 0,
+          bronze: statsData.bronze_medals || 0,
+          total_xp: statsData.total_xp || 0,
+          level: statsData.level || 1,
+          current_league: statsData.current_league || "Holzliga",
+        });
+
+        // Medaillen-Zähler direkt setzen
+        setAnimatedMedalCounts({
+          gold: statsData.gold_medals || 0,
+          silver: statsData.silver_medals || 0,
+          bronze: statsData.bronze_medals || 0,
+        });
+      }
     })();
   }, []);
 
@@ -138,78 +152,45 @@ export default function EndScreen({
   useEffect(() => {
     if (!stats) return;
     (async () => {
-      // Level laden
-      const { data: levelRows } = await supabase
-        .from("levels")
-        .select("*")
-        .eq("id", stats.level)
-        .maybeSingle();
-      if (levelRows) {
-        setLevelData(levelRows);
-      }
-      // Liga laden
-      const { data: leagueRows } = await supabase
-        .from("leagues")
-        .select("*")
-        .eq("name", stats.current_league)
-        .maybeSingle();
-      if (leagueRows) {
-        setLeagueData(leagueRows);
+      try {
+        // Level laden
+        const { data: levelRows, error: levelError } = await supabase
+          .from("levels")
+          .select("id, level_title, xp_required, level_image")
+          .eq("id", stats.level)
+          .single();
+
+        if (levelError) {
+          console.error("Fehler beim Laden des Levels:", levelError);
+          return;
+        }
+
+        if (levelRows) {
+          setLevelData(levelRows);
+        }
+
+        // Liga laden
+        const { data: leagueRows, error: leagueError } = await supabase
+          .from("leagues")
+          .select("id, name, league_img")
+          .eq("name", stats.current_league)
+          .single();
+
+        if (leagueError) {
+          console.error("Fehler beim Laden der Liga:", leagueError);
+          return;
+        }
+
+        if (leagueRows) {
+          setLeagueData(leagueRows);
+        }
+      } catch (error) {
+        console.error("Fehler beim Laden der Daten:", error);
       }
     })();
   }, [stats]);
 
-  // 3) Medaillen-Zähler initialisieren
-  useEffect(() => {
-    if (stats) {
-      setAnimatedMedalCounts({
-        gold: stats.gold,
-        silver: stats.silver,
-        bronze: stats.bronze,
-      });
-    }
-  }, [stats]);
-
-  // Animation bei Medaillen-Zähler
-  useEffect(() => {
-    if (!stats) return;
-    if (["Gold", "Silber", "Bronze"].includes(medalType)) {
-      const duration = 1000;
-      const steps = 20;
-      const intervalTime = duration / steps;
-      let step = 0;
-      const startCounts = { ...animatedMedalCounts };
-      const targetCounts = { ...animatedMedalCounts };
-
-      if (medalType === "Gold") {
-        targetCounts.gold = animatedMedalCounts.gold + 1;
-      } else if (medalType === "Silber") {
-        targetCounts.silver = animatedMedalCounts.silver + 1;
-      } else if (medalType === "Bronze") {
-        targetCounts.bronze = animatedMedalCounts.bronze + 1;
-      }
-
-      const diff = {
-        gold: targetCounts.gold - startCounts.gold,
-        silver: targetCounts.silver - startCounts.silver,
-        bronze: targetCounts.bronze - startCounts.bronze,
-      };
-
-      const timer = setInterval(() => {
-        step++;
-        setAnimatedMedalCounts({
-          gold: Math.round(startCounts.gold + (diff.gold * step) / steps),
-          silver: Math.round(startCounts.silver + (diff.silver * step) / steps),
-          bronze: Math.round(startCounts.bronze + (diff.bronze * step) / steps),
-        });
-        if (step >= steps) clearInterval(timer);
-      }, intervalTime);
-
-      return () => clearInterval(timer);
-    }
-  }, [medalType, stats, animatedMedalCounts]);
-
-  // 4) Kreis-Fortschritt (nächstes Level)
+  // 3) Kreis-Fortschritt (nächstes Level)
   useEffect(() => {
     (async () => {
       if (!levelData || !stats) return;
@@ -219,17 +200,16 @@ export default function EndScreen({
         .select("xp_required")
         .eq("id", nextLevelId)
         .maybeSingle();
-      const xpRequiredNext =
-        nextLevel?.xp_required ?? levelData.xp_required + 100;
+      const xpRequiredNext = Math.round(nextLevel?.xp_required ?? levelData.xp_required + 100);
       setNextLevelXP(xpRequiredNext);
 
-      const xpNow = stats.total_xp;
-      const xpCurrentLevel = levelData.xp_required;
+      const xpNow = Math.round(stats.total_xp);
+      const xpCurrentLevel = Math.round(levelData.xp_required);
       const xpNeededThisLevel = xpNow - xpCurrentLevel;
       const xpNeededForNext = xpRequiredNext - xpCurrentLevel;
       const ratio =
         xpNeededForNext > 0 ? xpNeededThisLevel / xpNeededForNext : 1;
-      const finalDash = ratio * circleCircumference;
+      const finalDash = Math.round(ratio * circleCircumference);
       let current = 0;
       const steps = 60;
       const stepValue = finalDash / steps;
@@ -241,11 +221,136 @@ export default function EndScreen({
           current = finalDash;
           clearInterval(timer);
         }
-        setLevelCircleDash(current);
+        setCircleDashValue(Math.round(current));
       }, 20);
       return () => clearInterval(timer);
     })();
   }, [levelData, stats]);
+
+  // Initialisiere previousLevel beim ersten Laden
+  useEffect(() => {
+    if (stats?.level && previousLevel === null) {
+      setPreviousLevel(stats.level - 1); // Setze auf vorheriges Level für erste Animation
+    }
+  }, [stats?.level]);
+
+  // Prüfe auf Level-Up
+  useEffect(() => {
+    if (stats?.level && previousLevel !== null && stats.level > previousLevel) {
+      console.log('Level Up!', { current: stats.level, previous: previousLevel }); // Debug-Log
+      setIsLevelUp(true);
+      // Sound abspielen
+      const levelUpSound = new Audio("/sounds/level-up.mp3");
+      levelUpSound.play().catch(err => console.log('Sound konnte nicht abgespielt werden:', err));
+      
+      // Animation nach 3 Sekunden ausblenden
+      setTimeout(() => {
+        setIsLevelUp(false);
+        setPreviousLevel(stats.level); // Update previousLevel nach der Animation
+      }, 3000);
+    }
+  }, [stats?.level, previousLevel]);
+
+  // Animation bei Medaillen-Zähler und Datenbankaktualisierung
+  useEffect(() => {
+    if (!stats) return;
+    if (["Gold", "Silber", "Bronze"].includes(medalType)) {
+      // Datenbank aktualisieren
+      (async () => {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.user) return;
+
+        let updateField = "";
+        let currentValue = 0;
+        if (medalType === "Gold") {
+          updateField = "gold_medals";
+          currentValue = stats.gold;
+        } else if (medalType === "Silber") {
+          updateField = "silver_medals";
+          currentValue = stats.silver;
+        } else if (medalType === "Bronze") {
+          updateField = "bronze_medals";
+          currentValue = stats.bronze;
+        }
+
+        // Datenbank aktualisieren
+        const { data: updatedStats } = await supabase
+          .from("user_stats")
+          .update({ [updateField]: currentValue + 1 })
+          .eq("user_id", session.user.id)
+          .select()
+          .single();
+
+        // Stats und Animation aktualisieren
+        if (updatedStats) {
+          setStats(prev => ({
+            ...prev!,
+            gold: updatedStats.gold_medals,
+            silver: updatedStats.silver_medals,
+            bronze: updatedStats.bronze_medals,
+          }));
+
+          // Animation starten
+          const duration = 1000;
+          const steps = 20;
+          const intervalTime = duration / steps;
+          let step = 0;
+          const startCounts = { ...animatedMedalCounts };
+          const targetCounts = {
+            gold: updatedStats.gold_medals,
+            silver: updatedStats.silver_medals,
+            bronze: updatedStats.bronze_medals,
+          };
+
+          const timer = setInterval(() => {
+            step++;
+            setAnimatedMedalCounts({
+              gold: Math.round(startCounts.gold + ((targetCounts.gold - startCounts.gold) * step) / steps),
+              silver: Math.round(startCounts.silver + ((targetCounts.silver - startCounts.silver) * step) / steps),
+              bronze: Math.round(startCounts.bronze + ((targetCounts.bronze - startCounts.bronze) * step) / steps),
+            });
+            if (step >= steps) clearInterval(timer);
+          }, intervalTime);
+
+          return () => clearInterval(timer);
+        }
+      })();
+    }
+  }, [medalType]);
+
+  // Level-Up Animation Komponente
+  const LevelUpAnimation = () => (
+    <motion.div
+      className="fixed inset-0 flex items-center justify-center z-50"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <div className="absolute inset-0 bg-black bg-opacity-50" />
+      <motion.div
+        className="relative bg-gradient-to-r from-yellow-400 to-yellow-600 p-8 rounded-lg shadow-2xl text-center"
+        initial={{ scale: 0.5, rotate: -180 }}
+        animate={{ scale: 1, rotate: 0 }}
+        exit={{ scale: 0.5, rotate: 180 }}
+        transition={{ type: "spring", stiffness: 200, damping: 20 }}
+      >
+        <div className="text-6xl mb-4">🎉</div>
+        <h2 className="text-3xl font-bold text-white mb-2">Level Up!</h2>
+        <p className="text-xl text-white">
+          Glückwunsch! Du bist jetzt Level {stats?.level}!
+        </p>
+        <motion.div
+          className="mt-4"
+          animate={{ y: [0, -10, 0] }}
+          transition={{ repeat: Infinity, duration: 1 }}
+        >
+          <span className="text-4xl">⭐</span>
+        </motion.div>
+      </motion.div>
+    </motion.div>
+  );
 
   if (!profile || !stats) {
     return (
@@ -267,7 +372,7 @@ export default function EndScreen({
   }
 
   const questionsCorrect = Math.floor(roundXp / 10);
-  const levelName = levelData?.name || "Unbekannter Level";
+  const levelName = levelData?.level_title || "Unbekannter Level";
   const xpNow = stats.total_xp;
   const xpNext = nextLevelXP ?? (levelData?.xp_required ?? 0) + 100;
 
@@ -283,12 +388,15 @@ export default function EndScreen({
 
   return (
     <motion.div 
-      className="quiz-container min-h-[600px] max-h-[600px] bg-[#151923] rounded-lg shadow-lg overflow-auto"
+      className="quiz-container min-h-[600px] bg-[#151923] rounded-lg shadow-lg overflow-auto"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
     >
-      <div className="flex flex-col md:flex-row h-full">
+      {/* Level-Up Animation */}
+      {isLevelUp && <LevelUpAnimation />}
+
+      <div className="flex flex-col md:flex-row min-h-[600px]">
         {/* Linke Spalte (dunkler Hintergrund) */}
         <motion.div 
           className="w-full md:w-1/2 bg-[#10131c] text-white p-6 flex flex-col"
@@ -367,7 +475,7 @@ export default function EndScreen({
                 strokeLinecap="round"
                 fill="none"
                 initial={{ strokeDasharray: "0, 100" }}
-                animate={{ strokeDasharray: `${levelCircleDash}, ${circleCircumference}` }}
+                animate={{ strokeDasharray: `${circleDashValue}, ${circleCircumference}` }}
                 transition={{ duration: 1.5, ease: "easeOut" }}
                 d="M18 2.0845
                    a 15.9155 15.9155 0 0 1 0 31.831
@@ -376,8 +484,10 @@ export default function EndScreen({
             </svg>
             
             <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
-              <div className="text-lg font-bold">Lvl {levelData?.id ?? 1}</div>
-              <div className="text-xs">{xpNow} / {xpNext}</div>
+              <div className="text-lg font-bold">Lvl {stats.level}</div>
+              <div className="text-xs">
+                {Math.round(stats.total_xp).toLocaleString()} / {Math.round(nextLevelXP || 0).toLocaleString()} XP
+              </div>
             </div>
           </div>
           
@@ -386,46 +496,124 @@ export default function EndScreen({
             className="flex justify-center gap-8 mb-6"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.8 }}
+            transition={{ duration: 0.5 }}
           >
-            <div className="flex flex-col items-center">
-              <img src={goldMedal} alt="Gold" className="w-8 h-8 mb-1" />
+            <motion.div 
+              className="flex flex-col items-center"
+              animate={medalType === "Gold" ? { 
+                scale: [1, 1.3, 1]
+              } : {}}
+              transition={{ 
+                duration: 0.5,
+                delay: 1.0 // Verzögerung nach Container-Animation
+              }}
+            >
+              <motion.img 
+                src={goldMedal} 
+                alt="Gold" 
+                className="w-8 h-8 mb-1"
+                animate={medalType === "Gold" ? {
+                  y: [0, -10, 0],
+                  filter: ["brightness(1)", "brightness(1.5)", "brightness(1)"]
+                } : {}}
+                transition={{ 
+                  duration: 0.5,
+                  delay: 1.0 // Verzögerung nach Container-Animation
+                }}
+              />
               <motion.span 
                 className="text-yellow-400 font-bold"
                 key={animatedMedalCounts.gold}
-                initial={{ scale: 0.5 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring" }}
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ 
+                  type: "spring",
+                  stiffness: 200,
+                  damping: 10,
+                  delay: 1.0 // Verzögerung nach Container-Animation
+                }}
               >
                 {animatedMedalCounts.gold}
               </motion.span>
-            </div>
+            </motion.div>
             
-            <div className="flex flex-col items-center">
-              <img src={silverMedal} alt="Silber" className="w-8 h-8 mb-1" />
+            <motion.div 
+              className="flex flex-col items-center"
+              animate={medalType === "Silber" ? { 
+                scale: [1, 1.3, 1]
+              } : {}}
+              transition={{ 
+                duration: 0.5,
+                delay: 1.0 // Verzögerung nach Container-Animation
+              }}
+            >
+              <motion.img 
+                src={silverMedal} 
+                alt="Silber" 
+                className="w-8 h-8 mb-1"
+                animate={medalType === "Silber" ? {
+                  y: [0, -10, 0],
+                  filter: ["brightness(1)", "brightness(1.5)", "brightness(1)"]
+                } : {}}
+                transition={{ 
+                  duration: 0.5,
+                  delay: 1.0 // Verzögerung nach Container-Animation
+                }}
+              />
               <motion.span 
                 className="text-gray-300 font-bold"
                 key={animatedMedalCounts.silver}
-                initial={{ scale: 0.5 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring" }}
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ 
+                  type: "spring",
+                  stiffness: 200,
+                  damping: 10,
+                  delay: 1.0 // Verzögerung nach Container-Animation
+                }}
               >
                 {animatedMedalCounts.silver}
               </motion.span>
-            </div>
+            </motion.div>
             
-            <div className="flex flex-col items-center">
-              <img src={bronzeMedal} alt="Bronze" className="w-8 h-8 mb-1" />
+            <motion.div 
+              className="flex flex-col items-center"
+              animate={medalType === "Bronze" ? { 
+                scale: [1, 1.3, 1]
+              } : {}}
+              transition={{ 
+                duration: 0.5,
+                delay: 1.0 // Verzögerung nach Container-Animation
+              }}
+            >
+              <motion.img 
+                src={bronzeMedal} 
+                alt="Bronze" 
+                className="w-8 h-8 mb-1"
+                animate={medalType === "Bronze" ? {
+                  y: [0, -10, 0],
+                  filter: ["brightness(1)", "brightness(1.5)", "brightness(1)"]
+                } : {}}
+                transition={{ 
+                  duration: 0.5,
+                  delay: 1.0 // Verzögerung nach Container-Animation
+                }}
+              />
               <motion.span 
                 className="text-amber-700 font-bold"
                 key={animatedMedalCounts.bronze}
-                initial={{ scale: 0.5 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring" }}
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ 
+                  type: "spring",
+                  stiffness: 200,
+                  damping: 10,
+                  delay: 1.0 // Verzögerung nach Container-Animation
+                }}
               >
                 {animatedMedalCounts.bronze}
               </motion.span>
-            </div>
+            </motion.div>
           </motion.div>
           
           <div className="mt-auto text-center">
@@ -435,7 +623,7 @@ export default function EndScreen({
 
         {/* Rechte Spalte (hellerer Hintergrund) */}
         <motion.div 
-          className="w-full md:w-1/2 bg-[#202431] p-6 flex flex-col items-center"
+          className="w-full md:w-1/2 bg-[#202431] p-6 flex flex-col items-center overflow-y-auto"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.3 }}
@@ -532,32 +720,20 @@ export default function EndScreen({
             </div>
           </motion.div>
           
-          <div className="flex flex-col gap-4 mt-8">
+          {/* Quiz wiederholen Button - immer sichtbar */}
+          <motion.div 
+            className="flex flex-col gap-4 mt-auto w-full"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8 }}
+          >
             <button
               onClick={onRestart}
-              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors w-full"
             >
-              Neue Runde starten
+              Quiz wiederholen
             </button>
-            <button
-              onClick={onOpenLeaderboard}
-              className="px-6 py-3 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Bestenliste anzeigen
-            </button>
-            <button
-              onClick={onOpenShop}
-              className="px-6 py-3 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Shop öffnen
-            </button>
-            <button
-              onClick={onOpenProfile}
-              className="px-6 py-3 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Profil anzeigen
-            </button>
-          </div>
+          </motion.div>
         </motion.div>
       </div>
     </motion.div>

@@ -258,7 +258,7 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
 
   return (
     <motion.div 
-      className="border-2 border-gray-900 min-h-[600px] max-h-[600px] overflow-hidden relative"
+      className="min-h-screen bg-[#151923] flex flex-col"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
     >
@@ -274,198 +274,179 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
         </motion.div>
       )}
       
-      <div className="flex flex-col h-full w-full">
-        <div className="bg-[#10131c] text-white p-4 flex justify-between items-center shadow-md w-full">
-          <button
-            onClick={onClose}
-            className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition duration-300 flex items-center gap-2"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-            </svg>
-            Zurück
-          </button>
-          <h1 className="text-2xl font-bold">Avatar-Shop</h1>
-          <div style={{ width: '80px' }}></div> {/* Platzhalter für Ausrichtung */}
-        </div>
+      {/* Header */}
+      <div className="bg-[#10131c] text-white p-4 flex justify-between items-center shadow-md">
+        <button
+          onClick={onClose}
+          className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition duration-300 flex items-center gap-2"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+          </svg>
+          Zurück
+        </button>
+        <h1 className="text-2xl font-bold">Avatar-Shop</h1>
+        <div style={{ width: '80px' }}></div>
+      </div>
 
-        <div className="flex-1 flex flex-col p-4 bg-[#151923] overflow-auto w-full" style={{ height: 'calc(600px - 64px)' }}>
-          <div className="flex flex-col md:flex-row gap-4 flex-1 h-full">
-            {/* Sidebar */}
-            <motion.div 
-              className="md:w-1/4 bg-[#202431] rounded-lg shadow-md p-4 md:max-h-[calc(600px-120px)] overflow-y-auto"
-              variants={itemVariants}
-              transition={{ delay: 0.1 }}
-              style={{ 
-                border: '1px solid #2d3748',
-                maxHeight: 'calc(600px - 120px)'
-              }}
+      {/* Content */}
+      <div className="flex-1 p-4 overflow-y-auto">
+        {/* Kategorien */}
+        <motion.div 
+          className="bg-[#202431] rounded-lg shadow-md p-4 mb-4"
+          variants={itemVariants}
+          transition={{ delay: 0.1 }}
+          style={{ border: '1px solid #2d3748' }}
+        >
+          <h3 className="text-lg font-semibold text-white mb-4 text-center pb-2 border-b border-gray-700">
+            Kategorien
+          </h3>
+          
+          <ul className="space-y-2">
+            {categories.map((category) => (
+              <li
+                key={category}
+                className={`px-4 py-2 rounded-md cursor-pointer transition-colors duration-200 
+                  ${selectedCategory === category 
+                    ? 'bg-blue-900 text-white font-medium' 
+                    : 'text-gray-300 hover:bg-gray-800'}`}
+                onClick={() => setSelectedCategory(category)}
+              >
+                {category}
+              </li>
+            ))}
+          </ul>
+          
+          <div className="mt-4 pt-4 border-t border-gray-700">
+            <label className="block text-gray-300 font-medium mb-2">
+              Sortieren nach:
+            </label>
+            <select
+              className="w-full p-2 bg-[#1a202c] border border-gray-700 rounded-md text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value as any)}
             >
-              <h3 className="text-lg font-semibold text-white mb-4 text-center pb-2 border-b border-gray-700">
-                Kategorien
-              </h3>
-              
-              <ul className="space-y-2">
-                {categories.map((category) => (
-                  <li
-                    key={category}
-                    className={`px-4 py-2 rounded-md cursor-pointer transition-colors duration-200 
-                      ${selectedCategory === category 
-                        ? 'bg-blue-900 text-white font-medium' 
-                        : 'text-gray-300 hover:bg-gray-800'}`}
-                    onClick={() => setSelectedCategory(category)}
-                  >
-                    {category}
-                  </li>
-                ))}
-              </ul>
-              
-              <div className="mt-6 pt-4 border-t border-gray-700">
-                <label className="block text-gray-300 font-medium mb-2">
-                  Sortieren nach:
-                </label>
-                <select
-                  className="w-full p-2 bg-[#1a202c] border border-gray-700 rounded-md text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  value={sortOption}
-                  onChange={(e) => setSortOption(e.target.value as any)}
-                >
-                  <option value="name">Name</option>
-                  <option value="price">Preis</option>
-                </select>
-              </div>
-              
-              <div className="mt-6 p-3 bg-[#2d3748] border border-yellow-800 rounded-md">
-                <p className="text-white font-medium flex items-center gap-2">
-                  <span>Deine Münzen:</span>
-                  <span className="text-yellow-400 font-bold">{userStats?.total_coins ?? 0}</span>
-                  <span className="text-yellow-400 text-lg">🪙</span>
-                </p>
-              </div>
-            </motion.div>
-
-            {/* Avatare */}
-            <motion.div 
-              className="flex-1 bg-[#202431] p-4 rounded-lg shadow-lg overflow-y-auto"
-              variants={itemVariants}
-              transition={{ delay: 0.4 }}
-              style={{ 
-                border: '2px solid #2d3748', 
-                minHeight: '400px',
-                maxHeight: 'calc(600px - 120px)',
-                overflowY: 'auto'
-              }}
-            >
-              {!selectedCategory ? (
-                <motion.p 
-                  className="text-center text-white py-12 font-bold"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                >
-                  Lade Kategorien...
-                </motion.p>
-              ) : filteredAvatars.length === 0 ? (
-                <motion.p 
-                  className="text-center text-white py-12 font-bold"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                >
-                  Keine Avatare in der Kategorie "{selectedCategory}" verfügbar.
-                </motion.p>
-              ) : (
-                <motion.div 
-                  className="shop-avatar-grid grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.5 }}
-                  style={{ 
-                    border: '1px dashed #4a5568', 
-                    padding: '16px', 
-                    borderRadius: '8px',
-                    background: '#1a202c'
-                  }}
-                >
-                  {filteredAvatars.map((avatar, index) => {
-                    const isOwned = ownedAvatars.has(avatar.id);
-                    
-                    return (
-                      <motion.div
-                        key={avatar.id}
-                        className="bg-[#2d3748] rounded-lg overflow-hidden shadow-md border border-gray-700 flex flex-col"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3, delay: 0.1 * index }}
-                        whileHover={{ scale: 1.03, boxShadow: "0 8px 15px rgba(0, 0, 0, 0.3)" }}
-                      >
-                        <div className="relative p-2" style={{ minHeight: '200px', background: '#202431' }}>
-                          <motion.img
-                            className="w-full h-40 object-contain rounded-lg shop-avatar-image"
-                            style={{ 
-                              display: 'block', 
-                              background: '#1a202c', 
-                              border: '1px solid #4a5568',
-                              padding: '4px'
-                            }}
-                            src={avatar.image_url}
-                            alt={avatar.title}
-                            initial={{ scale: 0.9, opacity: 0.8 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            transition={{ duration: 0.3 }}
-                            onError={(e) => {
-                              // Fallback zum Logo bei Fehler
-                              e.currentTarget.src = "https://lqoulygftdjbnfxkrihy.supabase.co/storage/v1/object/public/quiz-assets/Logo.svg";
-                            }}
-                          />
-                          
-                          {/* Titel unter dem Bild anzeigen, um zu sehen, welcher Avatar es ist */}
-                          <div className="absolute bottom-0 left-0 right-0 bg-blue-900 text-white text-sm p-1 text-center font-bold truncate">
-                            {avatar.title}
-                          </div>
-                          
-                          {isOwned && (
-                            <motion.div 
-                              className="absolute top-2 right-2 bg-green-600 text-white text-xs px-2 py-1 rounded-full"
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              transition={{ type: "spring", stiffness: 300, damping: 15 }}
-                            >
-                              Besitzt
-                            </motion.div>
-                          )}
-                        </div>
-                        
-                        <div className="p-4 flex-grow flex flex-col bg-[#1e293b]">
-                          <h3 className="text-white font-bold mb-1 text-center">{avatar.title}</h3>
-                          <div className="mt-2 flex items-center justify-center">
-                            <span className="text-lg font-bold text-yellow-400">{avatar.price}</span>
-                            <span className="text-yellow-400 text-lg ml-2">🪙</span>
-                          </div>
-                        </div>
-                        
-                        <div className="p-3 bg-[#2d3748] border-t border-gray-700">
-                          <motion.button
-                            className={`w-full py-2 rounded-lg font-medium ${
-                              isOwned
-                                ? "bg-blue-600 hover:bg-blue-700 text-white"
-                                : hasEnoughCoins(userStats?.total_coins, avatar.price)
-                                ? "bg-green-600 hover:bg-green-700 text-white"
-                                : "bg-gray-700 text-gray-400 cursor-not-allowed"
-                            }`}
-                            onClick={() => handleBuyOrSelect(avatar)}
-                            disabled={!isOwned && !hasEnoughCoins(userStats?.total_coins, avatar.price)}
-                            whileHover={{ scale: isOwned || hasEnoughCoins(userStats?.total_coins, avatar.price) ? 1.05 : 1 }}
-                            whileTap={{ scale: isOwned || hasEnoughCoins(userStats?.total_coins, avatar.price) ? 0.95 : 1 }}
-                          >
-                            {isOwned ? "Auswählen" : hasEnoughCoins(userStats?.total_coins, avatar.price) ? "Kaufen" : "Nicht genug Münzen"}
-                          </motion.button>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </motion.div>
-              )}
-            </motion.div>
+              <option value="name">Name</option>
+              <option value="price">Preis</option>
+            </select>
           </div>
-        </div>
+          
+          <div className="mt-4 p-3 bg-[#2d3748] border border-yellow-800 rounded-md">
+            <p className="text-white font-medium flex items-center gap-2">
+              <span>Deine Münzen:</span>
+              <span className="text-yellow-400 font-bold">{userStats?.total_coins ?? 0}</span>
+              <span className="text-yellow-400 text-lg">🪙</span>
+            </p>
+          </div>
+        </motion.div>
+
+        {/* Avatar Grid */}
+        <motion.div 
+          className="bg-[#202431] p-4 rounded-lg shadow-lg"
+          variants={itemVariants}
+          transition={{ delay: 0.4 }}
+          style={{ border: '2px solid #2d3748' }}
+        >
+          {!selectedCategory ? (
+            <motion.p 
+              className="text-center text-white py-12 font-bold"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              Lade Kategorien...
+            </motion.p>
+          ) : filteredAvatars.length === 0 ? (
+            <motion.p 
+              className="text-center text-white py-12 font-bold"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              Keine Avatare in der Kategorie "{selectedCategory}" verfügbar.
+            </motion.p>
+          ) : (
+            <motion.div 
+              className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5 }}
+            >
+              {filteredAvatars.map((avatar, index) => {
+                const isOwned = ownedAvatars.has(avatar.id);
+                
+                return (
+                  <motion.div
+                    key={avatar.id}
+                    className="bg-[#2d3748] rounded-lg overflow-hidden shadow-md border border-gray-700 flex flex-col"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.1 * index }}
+                    whileHover={{ scale: 1.03, boxShadow: "0 8px 15px rgba(0, 0, 0, 0.3)" }}
+                  >
+                    <div className="relative p-2" style={{ minHeight: '160px', background: '#202431' }}>
+                      <motion.img
+                        className="w-full h-32 md:h-40 object-contain rounded-lg shop-avatar-image"
+                        style={{ 
+                          display: 'block', 
+                          background: '#1a202c', 
+                          border: '1px solid #4a5568',
+                          padding: '4px'
+                        }}
+                        src={avatar.image_url}
+                        alt={avatar.title}
+                        initial={{ scale: 0.9, opacity: 0.8 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ duration: 0.3 }}
+                        onError={(e) => {
+                          e.currentTarget.src = "https://lqoulygftdjbnfxkrihy.supabase.co/storage/v1/object/public/quiz-assets/Logo.svg";
+                        }}
+                      />
+                      
+                      <div className="absolute bottom-0 left-0 right-0 bg-blue-900 text-white text-xs md:text-sm p-1 text-center font-bold truncate">
+                        {avatar.title}
+                      </div>
+                      
+                      {isOwned && (
+                        <motion.div 
+                          className="absolute top-2 right-2 bg-green-600 text-white text-xs px-2 py-1 rounded-full"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ type: "spring", stiffness: 300, damping: 15 }}
+                        >
+                          Besitzt
+                        </motion.div>
+                      )}
+                    </div>
+                    
+                    <div className="p-3 flex-grow flex flex-col bg-[#1e293b]">
+                      <div className="mt-1 flex items-center justify-center">
+                        <span className="text-base md:text-lg font-bold text-yellow-400">{avatar.price}</span>
+                        <span className="text-yellow-400 text-base md:text-lg ml-2">🪙</span>
+                      </div>
+                    </div>
+                    
+                    <div className="p-2 bg-[#2d3748] border-t border-gray-700">
+                      <motion.button
+                        className={`w-full py-2 rounded-lg text-sm md:text-base font-medium ${
+                          isOwned
+                            ? "bg-blue-600 hover:bg-blue-700 text-white"
+                            : hasEnoughCoins(userStats?.total_coins, avatar.price)
+                            ? "bg-green-600 hover:bg-green-700 text-white"
+                            : "bg-gray-700 text-gray-400 cursor-not-allowed"
+                        }`}
+                        onClick={() => handleBuyOrSelect(avatar)}
+                        disabled={!isOwned && !hasEnoughCoins(userStats?.total_coins, avatar.price)}
+                        whileHover={{ scale: isOwned || hasEnoughCoins(userStats?.total_coins, avatar.price) ? 1.05 : 1 }}
+                        whileTap={{ scale: isOwned || hasEnoughCoins(userStats?.total_coins, avatar.price) ? 0.95 : 1 }}
+                      >
+                        {isOwned ? "Auswählen" : hasEnoughCoins(userStats?.total_coins, avatar.price) ? "Kaufen" : "Nicht genug Münzen"}
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          )}
+        </motion.div>
       </div>
     </motion.div>
   );

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useDrag, useDrop, DndProvider, ConnectDragSource, ConnectDropTarget } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
+import { TouchBackend } from "react-dnd-touch-backend";
 import { supabase } from "./supabaseClient";
 import { motion } from "framer-motion";
 
@@ -32,12 +33,13 @@ interface DraggableItemProps {
   isDropped: boolean;
 }
 const DraggableItem: React.FC<DraggableItemProps> = ({ pair, isDropped }) => {
-  const [{ opacity }, drag] = useDrag(
+  const [{ opacity, isDragging }, drag] = useDrag(
     () => ({
       type: DRAG_ITEM_TYPE,
       item: { id: pair.id },
       collect: (monitor) => ({
-        opacity: monitor.isDragging() ? 0.5 : 1,
+        opacity: monitor.isDragging() ? 0.4 : 1,
+        isDragging: monitor.isDragging(),
       }),
       canDrag: !isDropped,
     }),
@@ -48,17 +50,21 @@ const DraggableItem: React.FC<DraggableItemProps> = ({ pair, isDropped }) => {
     <div ref={drag as unknown as React.Ref<HTMLDivElement>}>
       <motion.div
         className={`
-          p-3 rounded-md shadow-sm mb-3 select-none
+          p-3 md:p-3 rounded-md shadow-sm mb-3 select-none
           ${isDropped ? 'bg-gray-200 text-gray-500' : 'bg-white border-2 border-gray-300 hover:border-black'}
           ${!isDropped && 'cursor-move hover:shadow-md'}
+          ${isDragging ? 'ring-2 ring-blue-500 ring-opacity-50' : ''}
           transition-all duration-200
         `}
-        style={{ opacity }}
+        style={{ 
+          opacity,
+          transform: isDragging ? 'scale(1.05)' : 'scale(1)',
+        }}
         initial={{ scale: 1 }}
         whileHover={{ scale: isDropped ? 1 : 1.02 }}
         whileTap={{ scale: isDropped ? 1 : 0.98 }}
       >
-        <div className="flex items-center">
+        <div className="flex items-center min-h-[2.5rem]">
           {!isDropped && (
             <div className="flex-shrink-0 mr-3 text-gray-400">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -80,25 +86,32 @@ interface DropTargetProps {
   isMatched: boolean | undefined;
 }
 const DropTarget: React.FC<DropTargetProps> = ({ pair, onDrop, isMatched }) => {
-  const [{ isOver }, drop] = useDrop(
+  const [{ isOver, canDrop }, drop] = useDrop(
     () => ({
       accept: DRAG_ITEM_TYPE,
+      canDrop: () => isMatched === undefined, // Verhindert Drop wenn bereits beantwortet
       drop: (dragged: { id: number }) => {
         onDrop(dragged.id, pair.id);
       },
       collect: (monitor) => ({
         isOver: monitor.isOver(),
+        canDrop: monitor.canDrop(),
       }),
     }),
-    [pair, onDrop]
+    [pair, onDrop, isMatched] // isMatched zur Dependency-Liste hinzugefügt
   );
+
+  const isActive = isOver && canDrop;
 
   // Klassen basierend auf dem Status
   const targetClasses = [
     'p-3 rounded-md mb-3 transition-all duration-200 shadow-sm border-2',
     isMatched === true ? 'bg-green-50 border-green-500 text-green-800' : 
     isMatched === false ? 'bg-red-50 border-red-500 text-red-800' : 
-    isOver ? 'bg-gray-100 border-black border-dashed' : 'bg-white border-gray-300 border-dashed'
+    isActive ? 'bg-blue-50 border-blue-500 border-dashed ring-2 ring-blue-500 ring-opacity-50' :
+    isOver ? 'bg-gray-100 border-black border-dashed' : 
+    isMatched !== undefined ? 'bg-gray-100 border-gray-300 cursor-not-allowed' :
+    'bg-white border-gray-300 border-dashed'
   ].join(' ');
 
   return (
@@ -107,12 +120,12 @@ const DropTarget: React.FC<DropTargetProps> = ({ pair, onDrop, isMatched }) => {
         className={targetClasses}
         initial={{ scale: 1 }}
         animate={{ 
-          scale: isOver ? 1.03 : 1,
-          boxShadow: isOver ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
+          scale: isActive ? 1.02 : 1,
+          boxShadow: isActive ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
         }}
       >
-        <div className="flex items-center">
-          <div className="flex-grow font-medium">{pair.correct_match}</div>
+        <div className="flex items-center min-h-[2.5rem]">
+          <div className="flex-grow font-medium text-base">{pair.correct_match}</div>
           {isMatched === true && (
             <div className="flex-shrink-0 text-green-500">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -137,16 +150,22 @@ export default function DragDropQuestion({
   questionId,
   onComplete
 }: DragDropQuestionProps) {
-  // Gruppe und Paare laden
   const [group, setGroup] = useState<DragGroup | null>(null);
   const [pairs, setPairs] = useState<DragPair[]>([]);
   const [shuffledPairs, setShuffledPairs] = useState<DragPair[]>([]);
-  // "matched" speichert, ob für ein Drop-Target das richtige Item abgelegt wurde
   const [matched, setMatched] = useState<Record<number, boolean>>({});
-  // "droppedItems" markiert, welche Items bereits gezogen wurden
   const [droppedItems, setDroppedItems] = useState<Record<number, boolean>>({});
-  // Loading-Status
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Gruppe laden
   useEffect(() => {
@@ -227,17 +246,24 @@ export default function DragDropQuestion({
     );
   }
 
+  const touchBackendOptions = {
+    enableMouseEvents: true,
+    enableTouchEvents: true,
+    delayTouchStart: 50,
+    touchSlop: 20
+  };
+
   return (
-    <DndProvider backend={HTML5Backend}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+    <DndProvider backend={isMobile ? TouchBackend : HTML5Backend} options={isMobile ? touchBackendOptions : undefined}>
+      <div className="flex flex-col md:grid md:grid-cols-2 gap-6 md:gap-8">
         {/* Linke Spalte: Draggable Items */}
         <motion.div 
-          className="bg-gray-50 p-5 rounded-lg"
+          className="bg-gray-50 p-4 md:p-5 rounded-xl md:rounded-lg"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          <h3 className="mb-4 text-xl font-semibold text-gray-800">Begriffe</h3>
+          <h3 className="mb-6 md:mb-4 text-2xl md:text-xl font-semibold text-gray-800">Begriffe</h3>
           {shuffledPairs.map((pair) => (
             <DraggableItem
               key={pair.id}
@@ -249,12 +275,12 @@ export default function DragDropQuestion({
         
         {/* Rechte Spalte: Drop Targets */}
         <motion.div 
-          className="bg-gray-50 p-5 rounded-lg"
+          className="bg-gray-50 p-4 md:p-5 rounded-xl md:rounded-lg"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.1 }}
         >
-          <h3 className="mb-4 text-xl font-semibold text-gray-800">Zuordnung</h3>
+          <h3 className="mb-6 md:mb-4 text-2xl md:text-xl font-semibold text-gray-800">Zuordnung</h3>
           {pairs.map((pair) => (
             <DropTarget
               key={pair.id}

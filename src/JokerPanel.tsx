@@ -61,25 +61,25 @@ export default function JokerPanel({
   ];
 
   return (
-    <div className="flex gap-4">
+    <div className="flex flex-col md:flex-row gap-2 md:gap-4 p-2 md:p-0">
       {jokers.map((joker) => {
         const isDisabled = disabled || joker.used;
         return (
           <button
             key={joker.id}
-            className={`w-12 h-12 rounded-full flex items-center justify-center font-bold ${
+            className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center font-bold shadow-lg ${
               joker.class
-            } ${isDisabled ? "opacity-50" : "hover:scale-105 transition-transform"}`}
+            } ${isDisabled ? "opacity-50" : "hover:scale-105 active:scale-95 transition-transform"}`}
             onClick={joker.onClick}
             disabled={isDisabled}
             title={joker.alt}
           >
             {joker.icon === "check" ? (
-              <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-5 w-5 md:h-6 md:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             ) : (
-              <img src={joker.icon} alt={joker.alt} className="w-8 h-8" />
+              <img src={joker.icon} alt={joker.alt} className="w-6 h-6 md:w-8 md:h-8" />
             )}
           </button>
         );

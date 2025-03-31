@@ -19,6 +19,30 @@ import LueckentextQuestion from "./LueckentextQuestion";
 import { motion } from "framer-motion";
 import { Database } from "./types/supabase";
 
+// Sound-Effekte importieren
+import correctSoundFile from "./assets/sounds/correct.mp3";
+import wrongSoundFile from "./assets/sounds/wrong.mp3";
+
+// Sound-Effekte
+const correctSound = new Audio(correctSoundFile);
+const wrongSound = new Audio(wrongSoundFile);
+
+// Sound-Hilfsfunktion
+const playSound = async (sound: HTMLAudioElement) => {
+  try {
+    // Stoppe und setze alle Sounds zurück
+    [correctSound, wrongSound].forEach(s => {
+      s.pause();
+      s.currentTime = 0;
+    });
+    
+    // Spiele den gewünschten Sound
+    await sound.play();
+  } catch (error) {
+    console.log("Sound konnte nicht abgespielt werden:", error);
+  }
+};
+
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
 
@@ -57,6 +81,8 @@ export function QuizContainer({
   const [userInputAnswer, setUserInputAnswer] = useState("");
   const [isQuizEnd, setIsQuizEnd] = useState(false);
   const [medalType, setMedalType] = useState("Keine");
+  const [selectedAnswer, setSelectedAnswer] = useState<string>("");
+  const [isAnswerSubmitted, setIsAnswerSubmitted] = useState(false);
 
   const {
     currentIndex,
@@ -123,33 +149,32 @@ export function QuizContainer({
   
   // Extrahiere die Logik aus dem switch-case in Funktionen
   const handleTrueFalseAnswer = useCallback(async (opt: boolean) => {
-    if (!currentQ || isAnimationPlaying) return; // Verhindern doppelter Ausführung während Animation läuft
+    if (!currentQ || isAnimationPlaying) return;
     
-    // Hier prüfen wir, ob die richtige Antwort existiert und vergleichen sie mit der gewählten Option
     const correctAnswer = currentQ["Richtige Antwort"] || "";
-    
-    // Debug-Ausgaben
-    console.log("Debug - Fragetyp:", currentQ.type);
-    console.log("Debug - Richtige Antwort aus DB:", correctAnswer);
-    console.log("Debug - Gewählte Option:", opt);
-    
-    // Vergleiche die Antwort
     const isC = (correctAnswer.trim().toLowerCase() === "richtig") === opt;
-    console.log("Debug - Ist korrekt?", isC);
+    
+    // Sound abspielen
+    if (isC) {
+      await playSound(correctSound);
+    } else {
+      await playSound(wrongSound);
+    }
     
     const didAward = await awardNormal(currentQ.id, isC);
     if (didAward && globalUserStats) {
-      const xpDelta = isC ? 10 : 0;
-      const coinDelta = isC ? 1 : -1;
-      setRoundXp((prev) => prev + xpDelta);
-      setRoundCoins((prev) => Math.max(0, prev + coinDelta));
+      // Belohnungen berechnen
+      const rewardXp = isC ? 10 : 0;
+      const rewardCoins = isC ? 10 : -5; // 10 Münzen für richtig, -5 für falsch
+      setRoundXp(prev => prev + rewardXp);
+      setRoundCoins(prev => prev + rewardCoins);
       
       // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
       setIsAnimationPlaying(true);
       
       // Belohnungsanimation auslösen
-      setRewardXp(isC ? xpDelta : 0);
-      setRewardCoins(isC ? coinDelta : 0);
+      setRewardXp(rewardXp);
+      setRewardCoins(rewardCoins);
       setShowRewardAnimation(true);
       setLastAnswerCorrect(isC);
       
@@ -159,17 +184,38 @@ export function QuizContainer({
         setIsAnimationPlaying(false);
       }, 2000);
       
-      await updateUserStats({
-        total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
-        total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
-      });
+      // Statistiken aktualisieren
+      if (user) {
+        const { data: existingStats } = await supabase
+          .from('user_stats')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        if (existingStats) {
+          const { error: updateError } = await supabase
+            .from('user_stats')
+            .update({
+              total_xp: (existingStats.total_xp || 0) + rewardXp,
+              total_coins: Math.max(0, (existingStats.total_coins || 0) + rewardCoins), // Verhindert negative Münzen
+              questions_answered: (existingStats.questions_answered || 0) + 1,
+              correct_answers: existingStats.correct_answers + (isC ? 1 : 0),
+              last_played: new Date().toISOString()
+            })
+            .eq('user_id', user.id);
+
+          if (updateError) {
+            console.error('Fehler beim Aktualisieren der Statistiken:', updateError);
+          }
+        }
+      }
     } else {
       // Auch wenn keine Belohnung vergeben wurde (z.B. weil die Frage bereits beantwortet wurde),
       // setzen wir trotzdem den Status basierend auf der Korrektheit
       setLastAnswerCorrect(isC);
     }
     setShowExplanation(true);
-  }, [currentQ, awardNormal, globalUserStats, setRoundXp, setRoundCoins, setRewardXp, setRewardCoins, setShowRewardAnimation, setLastAnswerCorrect, updateUserStats, setShowExplanation, isAnimationPlaying]);
+  }, [currentQ, awardNormal, globalUserStats, setRoundXp, setRoundCoins, setRewardXp, setRewardCoins, setShowRewardAnimation, setLastAnswerCorrect, updateUserStats, setShowExplanation, isAnimationPlaying, user]);
 
   function finalizeQuiz() {
     const ratio = possibleRoundXp > 0 ? roundXp / possibleRoundXp : 0;
@@ -189,14 +235,51 @@ export function QuizContainer({
       questions[currentIndex].id
     );
     if (didAward && globalUserStats) {
-      const xpDelta = isCorrect ? 10 : 0;
-      const coinDelta = isCorrect ? 1 : -1;
-      setRoundXp((prev) => prev + xpDelta);
-      setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-      await updateUserStats({
-        total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
-        total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
-      });
+      const rewardXp = isCorrect ? 10 : 0;
+      const rewardCoins = isCorrect ? 10 : -5; // 10 Münzen für richtig, -5 für falsch
+      setRoundXp((prev) => prev + rewardXp);
+      setRoundCoins((prev) => Math.max(0, prev + rewardCoins));
+      
+      // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
+      setIsAnimationPlaying(true);
+      
+      // Belohnungsanimation auslösen
+      setRewardXp(rewardXp);
+      setRewardCoins(rewardCoins);
+      setShowRewardAnimation(true);
+      setLastAnswerCorrect(isCorrect);
+      
+      // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
+      setTimeout(() => {
+        setShowRewardAnimation(false);
+        setIsAnimationPlaying(false);
+      }, 2000);
+      
+      // Statistiken aktualisieren
+      if (user) {
+        const { data: existingStats } = await supabase
+          .from('user_stats')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        if (existingStats) {
+          const { error: updateError } = await supabase
+            .from('user_stats')
+            .update({
+              total_xp: (existingStats.total_xp || 0) + rewardXp,
+              total_coins: Math.max(0, (existingStats.total_coins || 0) + rewardCoins), // Verhindert negative Münzen
+              questions_answered: (existingStats.questions_answered || 0) + 1,
+              correct_answers: existingStats.correct_answers + (isCorrect ? 1 : 0),
+              last_played: new Date().toISOString()
+            })
+            .eq('user_id', user.id);
+
+          if (updateError) {
+            console.error('Fehler beim Aktualisieren der Statistiken:', updateError);
+          }
+        }
+      }
     }
   }
 
@@ -211,7 +294,6 @@ export function QuizContainer({
   }
 
   const handleAnswer = async (isCorrect: boolean) => {
-    // Verhindern doppelter Ausführung während Animation läuft
     if (isAnimationPlaying) return;
     
     console.log("QuizContainer - Von DragDropQuestion erhaltener isCorrect-Wert:", isCorrect);
@@ -219,21 +301,29 @@ export function QuizContainer({
     setLastAnswerCorrect(isCorrect);
     setShowExplanation(true);
     
-    if (!currentQ) return; // Sicherheitscheck für currentQ
+    // Sound abspielen
+    if (isCorrect) {
+      await playSound(correctSound);
+    } else {
+      await playSound(wrongSound);
+    }
+    
+    if (!currentQ) return;
     
     const didAward = await awardNormal(currentQ.id, isCorrect);
     if (didAward && globalUserStats) {
+      // Belohnungen berechnen
+      const rewardXp = isCorrect ? 10 : 0;
+      const rewardCoins = isCorrect ? 10 : -5; // 10 Münzen für richtig, -5 für falsch
+      setRoundXp(prev => prev + rewardXp);
+      setRoundCoins(prev => prev + rewardCoins);
+      
       // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
       setIsAnimationPlaying(true);
       
-      const xpDelta = isCorrect ? 10 : 0;
-      const coinDelta = isCorrect ? 1 : -1;
-      setRoundXp((prev) => prev + xpDelta);
-      setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-      
       // Belohnungsanimation auslösen
-      setRewardXp(isCorrect ? xpDelta : 0);
-      setRewardCoins(isCorrect ? coinDelta : 0);
+      setRewardXp(rewardXp);
+      setRewardCoins(rewardCoins);
       setShowRewardAnimation(true);
       
       // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
@@ -242,10 +332,95 @@ export function QuizContainer({
         setIsAnimationPlaying(false);
       }, 2000);
       
-      await updateUserStats({
-        total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
-        total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
-      });
+      // Statistiken aktualisieren
+      if (user) {
+        const { data: existingStats } = await supabase
+          .from('user_stats')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        if (existingStats) {
+          const { error: updateError } = await supabase
+            .from('user_stats')
+            .update({
+              total_xp: (existingStats.total_xp || 0) + rewardXp,
+              total_coins: Math.max(0, (existingStats.total_coins || 0) + rewardCoins), // Verhindert negative Münzen
+              questions_answered: (existingStats.questions_answered || 0) + 1,
+              correct_answers: existingStats.correct_answers + (isCorrect ? 1 : 0),
+              last_played: new Date().toISOString()
+            })
+            .eq('user_id', user.id);
+
+          if (updateError) {
+            console.error('Fehler beim Aktualisieren der Statistiken:', updateError);
+          }
+        }
+      }
+    }
+  };
+
+  const handleFinalAnswer = async (answer: string) => {
+    if (!currentQ || !questions) return;
+    const isCorrect = answer.toLowerCase() === currentQ.correct_answer.toLowerCase();
+    setSelectedAnswer(answer);
+    setShowExplanation(true);
+    setIsAnswerSubmitted(true);
+
+    // Sound abspielen
+    if (isCorrect) {
+      await playSound(correctSound);
+    } else {
+      await playSound(wrongSound);
+    }
+
+    // Belohnungen vergeben
+    const didAward = await awardNormal(currentQ.id, isCorrect);
+    if (didAward && globalUserStats) {
+      const rewardXp = isCorrect ? 10 : 0;
+      const rewardCoins = isCorrect ? 10 : -5; // 10 Münzen für richtig, -5 für falsch
+      setRoundXp((prev) => prev + rewardXp);
+      setRoundCoins((prev) => Math.max(0, prev + rewardCoins));
+      
+      // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
+      setIsAnimationPlaying(true);
+      
+      // Belohnungsanimation auslösen
+      setRewardXp(rewardXp);
+      setRewardCoins(rewardCoins);
+      setShowRewardAnimation(true);
+      
+      // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
+      setTimeout(() => {
+        setShowRewardAnimation(false);
+        setIsAnimationPlaying(false);
+      }, 2000);
+      
+      // Statistiken aktualisieren
+      if (user) {
+        const { data: existingStats } = await supabase
+          .from('user_stats')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        if (existingStats) {
+          const { error: updateError } = await supabase
+            .from('user_stats')
+            .update({
+              total_xp: (existingStats.total_xp || 0) + rewardXp,
+              total_coins: Math.max(0, (existingStats.total_coins || 0) + rewardCoins), // Verhindert negative Münzen
+              questions_answered: (existingStats.questions_answered || 0) + 1,
+              correct_answers: existingStats.correct_answers + (isCorrect ? 1 : 0),
+              last_played: new Date().toISOString()
+            })
+            .eq('user_id', user.id);
+
+          if (updateError) {
+            console.error('Fehler beim Aktualisieren der Statistiken:', updateError);
+          }
+        }
+      }
     }
   };
 
@@ -335,13 +510,19 @@ export function QuizContainer({
           <QuestionComponent
             question={{ ...currentQ, chapter_id: currentQ.chapter_id ?? 1 }}
             onAnswer={async (_selected: string, isCorrect: boolean) => {
-              // Verhindern doppelter Ausführung während Animation läuft
               if (isAnimationPlaying) return;
               
               console.log("QuizContainer - Von QuestionComponent erhaltener isCorrect-Wert:", isCorrect);
               
               setLastAnswerCorrect(isCorrect);
               setShowExplanation(true);
+
+              // Sound abspielen
+              if (isCorrect) {
+                await playSound(correctSound);
+              } else {
+                await playSound(wrongSound);
+              }
               
               const didAward = await awardNormal(currentQ.id, isCorrect);
               if (didAward && globalUserStats) {
@@ -417,9 +598,15 @@ export function QuizContainer({
               setShowExplanation(true);
             }}
             onSelfEvaluation={async (isCorrect) => {
-              // Verhindern doppelter Ausführung während Animation läuft
               if (isAnimationPlaying) return;
               
+              // Sound abspielen
+              if (isCorrect) {
+                await playSound(correctSound);
+              } else {
+                await playSound(wrongSound);
+              }
+
               const didAward = await awardNormal(currentQ.id, isCorrect);
               if (didAward && globalUserStats) {
                 // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
@@ -472,12 +659,17 @@ export function QuizContainer({
               correctAnswer={currentQ["Richtige Antwort"] ?? ""}
               hint={currentQ.Begründung}
               onComplete={async (isCorrect) => {
-                // Verhindern doppelter Ausführung während Animation läuft
                 if (isAnimationPlaying) return;
                 
                 console.log("LueckentextQuestion onComplete mit isCorrect:", isCorrect);
                 
-                // Zuerst Datenbank aktualisieren und prüfen, ob die Frage bereits beantwortet wurde
+                // Sound abspielen
+                if (isCorrect) {
+                  await playSound(correctSound);
+                } else {
+                  await playSound(wrongSound);
+                }
+
                 const didAward = await awardNormal(currentQ.id, isCorrect);
                 console.log("didAward Ergebnis:", didAward);
                 
@@ -537,36 +729,52 @@ export function QuizContainer({
 
   return (
     <div className="border-2 border-gray-900 rounded-sm shadow-lg overflow-hidden relative">
-      {/* Belohnungsanimation am oberen Rand in der Nähe der Headline */}
-      <RewardAnimation 
-        xp={rewardXp} 
-        coins={rewardCoins} 
-        isCorrect={lastAnswerCorrect === true}
-        isVisible={showRewardAnimation} 
-        position="headline"
-      />
-      
-      {/* Richtig/Falsch Animation in der Mitte des Containers */}
+      {/* Kombinierte Belohnungs- und Richtig/Falsch-Animation */}
       {showRewardAnimation && (
-        <div className="absolute top-[75%] left-[80%] transform -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
+        <div className="fixed md:absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1.2, opacity: 1, rotate: [0, -5, 5, -5, 0] }}
+            animate={{ scale: 1.2, opacity: 1 }}
             exit={{ scale: 0.5, opacity: 0 }}
             transition={{ duration: 0.5, ease: "backOut" }}
+            className="flex flex-col items-center gap-4"
           >
-            {lastAnswerCorrect ? (
-              <div className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center">
-                <svg className="w-16 h-16 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            {/* Richtig/Falsch Icon */}
+            {lastAnswerCorrect === true ? (
+              <div className="w-16 h-16 md:w-24 md:h-24 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
+                <svg className="w-10 h-10 md:w-16 md:h-16 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
             ) : (
-              <div className="w-24 h-24 bg-red-500 rounded-full flex items-center justify-center">
-                <svg className="w-16 h-16 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="w-16 h-16 md:w-24 md:h-24 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
+                <svg className="w-10 h-10 md:w-16 md:h-16 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
+            )}
+
+            {/* Rewards */}
+            {lastAnswerCorrect && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="flex flex-col items-center gap-2 bg-white/90 backdrop-blur-sm p-3 rounded-lg shadow-lg"
+              >
+                {rewardXp > 0 && (
+                  <div className="flex items-center gap-2 text-lg md:text-xl font-bold text-yellow-500">
+                    <span className="text-xl md:text-2xl">⭐</span>
+                    +{rewardXp} XP
+                  </div>
+                )}
+                {rewardCoins > 0 && (
+                  <div className="flex items-center gap-2 text-lg md:text-xl font-bold text-yellow-500">
+                    <span className="text-xl md:text-2xl">🪙</span>
+                    +{rewardCoins} Münzen
+                  </div>
+                )}
+              </motion.div>
             )}
           </motion.div>
         </div>
@@ -581,6 +789,8 @@ export function QuizContainer({
           onOpenShop={onOpenShop}
           onOpenSettings={onOpenSettings}
           onOpenLeaderboard={onOpenLeaderboard}
+          roundXp={roundXp}
+          roundCoins={roundCoins}
         />
         <div className="flex-1 overflow-auto">
           {/* Fragen-Navigation */}
@@ -599,17 +809,17 @@ export function QuizContainer({
           </div>
 
           {/* Inhalt: 2-spaltig mit schwarzem und weißem Bereich */}
-          <div className="flex">
+          <div className="flex flex-col md:flex-row">
             {/* Linke Spalte - Schwarzer Bereich mit Frage */}
-            <div className="w-[60%] bg-black text-white p-8 relative min-h-[600px] border-r-2 border-gray-400">
-              <div className="mb-12">
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="text-xl font-bold whitespace-nowrap">
+            <div className="w-full md:w-[60%] bg-black text-white p-4 md:p-8 relative min-h-[300px] md:min-h-[600px] md:border-r-2 border-gray-400">
+              <div className="mb-6 md:mb-12">
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:gap-4 mb-4 md:mb-6">
+                  <div className="text-lg md:text-xl font-bold whitespace-nowrap">
                     Frage {currentIndex + 1} von {questions?.length || 8}
                   </div>
                   
                   {/* Fortschrittsbalken */}
-                  <div className="w-full h-3 bg-black border-2 border-yellow-400 flex-grow rounded-full overflow-hidden">
+                  <div className="w-full h-2 md:h-3 bg-gray-900 border border-yellow-400 md:border-2 flex-grow rounded-full overflow-hidden">
                     <motion.div
                       className="h-full bg-yellow-400"
                       style={{ width: `${progressPercentage}%` }}
@@ -620,50 +830,50 @@ export function QuizContainer({
                   </div>
                 </div>
                 
-                <div className="text-2xl font-bold mt-8 leading-relaxed">
+                <div className="text-xl md:text-2xl font-bold mt-4 md:mt-8 leading-relaxed">
                   {currentQ?.Frage}
                 </div>
                 
                 {/* Erklärungscontainer für reguläre Fragen */}
                 {showExplanation && currentQ && currentQ.type !== "open_question" && (
-                  <div className="mt-8 p-5 bg-gray-800 rounded-md border border-yellow-400">
-                    <div className="flex items-center gap-3 mb-3">
+                  <div className="mt-4 md:mt-8 p-3 md:p-5 bg-gray-800 rounded-md border border-yellow-400">
+                    <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-3">
                       {lastAnswerCorrect === true ? (
-                        <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <div className="w-6 h-6 md:w-8 md:h-8 bg-green-500 rounded-full flex items-center justify-center">
+                          <svg className="w-4 h-4 md:w-5 md:h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
                         </div>
                       ) : (
-                        <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
-                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <div className="w-6 h-6 md:w-8 md:h-8 bg-red-500 rounded-full flex items-center justify-center">
+                          <svg className="w-4 h-4 md:w-5 md:h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                           </svg>
                         </div>
                       )}
-                      <h3 className="text-xl font-bold text-white">
+                      <h3 className="text-lg md:text-xl font-bold text-white">
                         {lastAnswerCorrect === true ? "Richtig!" : "Leider falsch"}
                       </h3>
                     </div>
                     
-                    <div className="text-white">
-                      <p className="mb-3">
+                    <div className="text-white text-sm md:text-base">
+                      <p className="mb-2 md:mb-3">
                         <span className="font-semibold">Richtige Antwort:</span> {currentQ["Richtige Antwort"]}
                       </p>
                       {currentQ.Begründung && (
                         <div>
                           <span className="font-semibold">Begründung:</span>
-                          <p className="mt-2">{currentQ.Begründung}</p>
+                          <p className="mt-1 md:mt-2">{currentQ.Begründung}</p>
                         </div>
                       )}
                     </div>
                     
-                    {/* Weiter-Button hinzufügen - während Animation deaktiviert */}
-                    <div className="mt-6 flex justify-end">
+                    {/* Weiter-Button */}
+                    <div className="mt-4 md:mt-6 flex justify-end">
                       <button 
                         onClick={handleNext}
                         disabled={isAnimationPlaying}
-                        className={`px-6 py-2 font-medium rounded transition-colors ${
+                        className={`px-4 md:px-6 py-2 font-medium rounded transition-colors ${
                           isAnimationPlaying 
                             ? "bg-gray-400 text-gray-700 cursor-not-allowed" 
                             : "bg-yellow-400 text-black hover:bg-yellow-500"
@@ -677,56 +887,48 @@ export function QuizContainer({
                 
                 {/* Vergleichscontainer für OpenQuestion */}
                 {showExplanation && currentQ && currentQ.type === "open_question" && (
-                  <div className="mt-8 p-5 bg-gray-800 rounded-md border border-yellow-400 overflow-y-auto max-h-[450px]">
-                    <h3 className="text-lg font-bold mb-3 text-white">Vergleiche deine Antwort:</h3>
+                  <div className="mt-4 md:mt-8 p-3 md:p-5 bg-gray-800 rounded-md border border-yellow-400 overflow-y-auto max-h-[300px] md:max-h-[450px]">
+                    <h3 className="text-base md:text-lg font-bold mb-2 md:mb-3 text-white">Vergleiche deine Antwort:</h3>
                     
-                    <div className="mb-4">
-                      <h4 className="font-semibold text-white">Deine Antwort:</h4>
-                      <div className="p-3 bg-gray-700 border border-gray-600 rounded mt-1 text-white">
+                    <div className="mb-3 md:mb-4">
+                      <h4 className="font-semibold text-white text-sm md:text-base">Deine Antwort:</h4>
+                      <div className="p-2 md:p-3 bg-gray-700 border border-gray-600 rounded mt-1 text-white text-sm md:text-base">
                         {userInputAnswer || <em className="text-gray-400">Keine Antwort</em>}
                       </div>
                     </div>
                     
-                    <div className="mb-4">
-                      <h4 className="font-semibold text-white">Musterlösung:</h4>
-                      <div className="p-3 bg-gray-700 border border-gray-600 rounded mt-1 text-white">
+                    <div className="mb-3 md:mb-4">
+                      <h4 className="font-semibold text-white text-sm md:text-base">Musterlösung:</h4>
+                      <div className="p-2 md:p-3 bg-gray-700 border border-gray-600 rounded mt-1 text-white text-sm md:text-base">
                         {currentQ["Richtige Antwort"] || <em className="text-gray-400">Keine Musterlösung verfügbar</em>}
                       </div>
                     </div>
                     
-                    <div className="mt-5">
-                      <p className="mb-2 font-medium text-white">Wie bewertest du deine Antwort?</p>
-                      <div className="flex justify-between">
-                        <div className="flex gap-3">
+                    <div className="mt-4 md:mt-5">
+                      <p className="mb-2 font-medium text-white text-sm md:text-base">Wie bewertest du deine Antwort?</p>
+                      <div className="flex flex-col md:flex-row justify-between gap-2 md:gap-0">
+                        <div className="flex gap-2 md:gap-3">
                           <button
-                            className={`py-2 px-6 rounded font-medium transition-colors flex items-center gap-2 ${
+                            className={`py-2 px-4 md:px-6 rounded font-medium transition-colors flex items-center gap-2 ${
                               lastAnswerCorrect === true
                                 ? "bg-green-500 text-white"
                                 : "bg-gray-700 hover:bg-green-500 text-white"
                             }`}
                             onClick={async () => {
                               if (lastAnswerCorrect === null) {
-                                console.log("OpenQuestion - Antwort als richtig bewertet");
                                 setLastAnswerCorrect(true);
-                                
-                                // Direkt wie bei anderen Komponenten die Bewertung durchführen
                                 const didAward = await awardNormal(currentQ.id, true);
                                 if (didAward && globalUserStats) {
                                   const xpDelta = 10;
                                   const coinDelta = 1;
                                   setRoundXp((prev) => prev + xpDelta);
                                   setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-                                  
-                                  // Belohnungsanimation auslösen
                                   setRewardXp(xpDelta);
                                   setRewardCoins(coinDelta);
                                   setShowRewardAnimation(true);
-                                  
-                                  // Animation nach 2 Sekunden ausblenden
                                   setTimeout(() => {
                                     setShowRewardAnimation(false);
                                   }, 2000);
-                                  
                                   await updateUserStats({
                                     total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
                                     total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
@@ -736,42 +938,34 @@ export function QuizContainer({
                             }}
                             disabled={lastAnswerCorrect !== null}
                           >
-                            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <div className="w-5 h-5 md:w-6 md:h-6 bg-green-500 rounded-full flex items-center justify-center">
+                              <svg className="w-3 h-3 md:w-4 md:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                               </svg>
                             </div>
-                            <span>Richtig</span>
+                            <span className="text-sm md:text-base">Richtig</span>
                           </button>
                           <button
-                            className={`py-2 px-6 rounded font-medium transition-colors flex items-center gap-2 ${
+                            className={`py-2 px-4 md:px-6 rounded font-medium transition-colors flex items-center gap-2 ${
                               lastAnswerCorrect === false
                                 ? "bg-red-500 text-white"
                                 : "bg-gray-700 hover:bg-red-500 text-white"
                             }`}
                             onClick={async () => {
                               if (lastAnswerCorrect === null) {
-                                console.log("OpenQuestion - Antwort als falsch bewertet");
                                 setLastAnswerCorrect(false);
-                                
-                                // Direkt wie bei anderen Komponenten die Bewertung durchführen
                                 const didAward = await awardNormal(currentQ.id, false);
                                 if (didAward && globalUserStats) {
                                   const xpDelta = 0;
                                   const coinDelta = -1;
                                   setRoundXp((prev) => prev + xpDelta);
                                   setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-                                  
-                                  // Belohnungsanimation auslösen
                                   setRewardXp(xpDelta);
                                   setRewardCoins(coinDelta);
                                   setShowRewardAnimation(true);
-                                  
-                                  // Animation nach 2 Sekunden ausblenden
                                   setTimeout(() => {
                                     setShowRewardAnimation(false);
                                   }, 2000);
-                                  
                                   await updateUserStats({
                                     total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
                                     total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
@@ -781,12 +975,12 @@ export function QuizContainer({
                             }}
                             disabled={lastAnswerCorrect !== null}
                           >
-                            <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
-                              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <div className="w-5 h-5 md:w-6 md:h-6 bg-red-500 rounded-full flex items-center justify-center">
+                              <svg className="w-3 h-3 md:w-4 md:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                               </svg>
                             </div>
-                            <span>Falsch</span>
+                            <span className="text-sm md:text-base">Falsch</span>
                           </button>
                         </div>
                         
@@ -795,7 +989,7 @@ export function QuizContainer({
                           <button 
                             onClick={handleNext}
                             disabled={isAnimationPlaying}
-                            className={`px-6 py-2 font-medium rounded transition-colors ${
+                            className={`w-full md:w-auto mt-2 md:mt-0 px-4 md:px-6 py-2 font-medium rounded transition-colors ${
                               isAnimationPlaying 
                                 ? "bg-gray-400 text-gray-700 cursor-not-allowed" 
                                 : "bg-yellow-400 text-black hover:bg-yellow-500"
@@ -812,19 +1006,18 @@ export function QuizContainer({
             </div>
 
             {/* Rechte Spalte - Weißer Bereich mit Antworten */}
-            <div className="w-[40%] bg-white p-8 flex flex-col items-center justify-start pt-16 relative min-h-[600px]">
-              {/* Container für den Hauptinhalt, der den Raum für die Joker am unteren Rand lässt */}
-              <div className="w-full mb-24">
+            <div className="w-full md:w-[40%] bg-white p-4 md:p-8 flex flex-col items-center justify-start pt-8 md:pt-16 relative min-h-[300px] md:min-h-[600px]">
+              {/* Container für den Hauptinhalt */}
+              <div className="w-full mb-8 md:mb-16">
                 {currentQ?.type === "open_question" ? (
-                  // Nur die Eingabe für offene Fragen im weißen Bereich
                   <div className="w-full">{content}</div>
                 ) : currentQ?.type === "true_false" ? (
-                  <div className="w-full flex flex-col gap-6">
+                  <div className="w-full flex flex-col gap-4 md:gap-6">
                     <button
                       onClick={async () => {
                         await handleTrueFalseAnswer(true);
                       }}
-                      className="w-full py-5 px-6 border-2 border-black text-black bg-white text-center font-medium text-lg rounded-none hover:bg-gray-100 transition-colors"
+                      className="w-full py-4 md:py-5 px-4 md:px-6 border-2 border-black text-black bg-white text-center font-medium text-base md:text-lg rounded-md md:rounded-none hover:bg-gray-100 transition-colors"
                     >
                       Richtig
                     </button>
@@ -832,7 +1025,7 @@ export function QuizContainer({
                       onClick={async () => {
                         await handleTrueFalseAnswer(false);
                       }}
-                      className="w-full py-5 px-6 border-2 border-black text-black bg-white text-center font-medium text-lg rounded-none hover:bg-gray-100 transition-colors"
+                      className="w-full py-4 md:py-5 px-4 md:px-6 border-2 border-black text-black bg-white text-center font-medium text-base md:text-lg rounded-md md:rounded-none hover:bg-gray-100 transition-colors"
                     >
                       Falsch
                     </button>
@@ -842,8 +1035,8 @@ export function QuizContainer({
                 )}
               </div>
               
-              {/* Joker im unteren Bereich der weißen Seite */}
-              <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2">
+              {/* Joker im unteren Bereich */}
+              <div className="fixed md:absolute right-2 bottom-8 md:bottom-10 md:left-1/2 md:right-auto md:-translate-x-1/2 flex justify-center">
                 <JokerPanel 
                   xpBoostUsed={xpBoostUsed}
                   streakBoostUsed={streakBoostUsed}

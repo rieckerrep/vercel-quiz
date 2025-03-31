@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import correctSound from './assets/sounds/correct.mp3';
 import wrongSound from './assets/sounds/wrong.mp3';

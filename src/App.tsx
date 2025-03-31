@@ -139,7 +139,7 @@ function App() {
 
       {/* Shop-Overlay */}
       {activeScreen === "shop" && (
-        <div className="absolute top-0 left-0 w-full min-h-screen bg-lightBg p-4">
+        <div className="absolute top-0 left-0 w-full min-h-screen bg-lightBg p-0 md:p-4">
           <ShopScreen
             user={user}
             onClose={() => setActiveScreen("quiz")}

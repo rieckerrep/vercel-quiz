@@ -55,27 +55,46 @@
     min-height: 100vh !important;
     max-height: none !important;
     border-radius: 0 !important;
+    padding: 0 !important;
   }
   
   .overflow-y-auto {
-    max-height: calc(100vh - 180px) !important;
+    max-height: none !important;
   }
   
   .shop-avatar-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    padding: 8px !important;
+  }
+
+  .shop-avatar-item {
+    min-height: 160px !important;
+  }
+
+  .shop-avatar-image {
+    height: 120px !important;
   }
 }
 
 /* Spezifische Anpassungen für kleine Bildschirme */
 @media (max-width: 480px) {
   .shop-avatar-grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+    padding: 6px !important;
+  }
+  
+  .shop-avatar-item {
+    min-height: 140px !important;
+  }
+
+  .shop-avatar-image {
+    height: 100px !important;
   }
   
   .overflow-y-auto {
-    max-height: calc(100vh - 150px) !important;
+    max-height: none !important;
   }
 }
 
