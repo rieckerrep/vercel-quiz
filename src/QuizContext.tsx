@@ -30,7 +30,11 @@ const QuizContext = createContext<QuizContextType>({
   awardQuestion: async () => false,
 });
 
-export const QuizProvider = ({ children }: PropsWithChildren) => {
+interface QuizProviderProps {
+  children: ReactNode;
+}
+
+export const QuizProvider: React.FC<QuizProviderProps> = ({ children }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [roundXp, setRoundXp] = useState(0);
   const [roundCoins, setRoundCoins] = useState(0);
