@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Verschaffe dir einen Überblick über die Projektstruktur. Es ist insbesondere wichtig, dass die Einzelnen Elemente ineinander wirken und die Daten richtig übergeben bekommen. Wenn du Code änderst, dann berücksichtige kurz wie sich das auf die davon abhängigen Komponenten auswirken könnte.

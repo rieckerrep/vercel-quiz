@@ -18,12 +18,15 @@ import { useUserStats } from "./useUserStats";
 import RewardAnimation from "./RewardAnimation";
 import LueckentextQuestion from "./LueckentextQuestion";
 import { motion } from "framer-motion";
-import useSupabaseTable from './hooks/useSupabaseTable';
+import { Database } from "./types/supabase";
+
+type Profile = Database['public']['Tables']['profiles']['Row'];
+type UserStats = Database['public']['Tables']['user_stats']['Row'];
 
 interface QuizContainerProps {
-  user: any;
-  profile: any;
-  userStats: any;
+  user: any; // Auth user type from Supabase
+  profile: Profile;
+  userStats: UserStats;
   onOpenProfile: () => void;
   onOpenShop: () => void;
   onOpenLeaderboard: () => void;
@@ -31,8 +34,6 @@ interface QuizContainerProps {
 
 export function QuizContainer({
   user,
-  profile,
-  userStats,
   onOpenProfile,
   onOpenShop,
   onOpenLeaderboard,
@@ -42,9 +43,7 @@ export function QuizContainer({
     useQuestions(chapterId);
 
   const [showExplanation, setShowExplanation] = useState(false);
-  const [lastAnswerCorrect, setLastAnswerCorrect] = useState<boolean | null>(
-    null
-  );
+  const [lastAnswerCorrect, setLastAnswerCorrect] = useState<boolean | null>(null);
   const [userInputAnswer, setUserInputAnswer] = useState("");
   const [isQuizEnd, setIsQuizEnd] = useState(false);
   const [medalType, setMedalType] = useState("Keine");
@@ -69,18 +68,17 @@ export function QuizContainer({
   const [showRewardAnimation, setShowRewardAnimation] = useState(false);
   const [rewardXp, setRewardXp] = useState(0);
   const [rewardCoins, setRewardCoins] = useState(0);
-  const [isAnimationPlaying, setIsAnimationPlaying] = useState(false); // Neues Flag, um zu verhindern, dass die Animation mehrfach ausgelöst wird
+  const [isAnimationPlaying, setIsAnimationPlaying] = useState(false);
 
   const { awardQuestion: awardNormal, awardSubquestion } = useQuizAwards(
     user.id
   );
   const { userStats: globalUserStats, updateUserStats } = useUserStats(user.id);
 
-  // Weitere Variablen für die OpenQuestion
-  const [openQuestionAnswer, setOpenQuestionAnswer] = useState<string>("");
-
   // currentQ muss vor der Verwendung deklariert werden
   const currentQ = questions?.[currentIndex];
+  
+  const queryClient = useQueryClient();
   
   // Stelle sicher, dass alle useEffect-Aufrufe immer vorhanden sind, 
   // nicht nur abhängig vom Fragetyp
@@ -116,21 +114,19 @@ export function QuizContainer({
   }, []);
   
   // Extrahiere die Logik aus dem switch-case in Funktionen
-  const handleTrueFalseAnswer = useCallback(async (opt: string) => {
+  const handleTrueFalseAnswer = useCallback(async (opt: boolean) => {
     if (!currentQ || isAnimationPlaying) return; // Verhindern doppelter Ausführung während Animation läuft
+    
     // Hier prüfen wir, ob die richtige Antwort existiert und vergleichen sie mit der gewählten Option
     const correctAnswer = currentQ["Richtige Antwort"] || "";
     
     // Debug-Ausgaben
     console.log("Debug - Fragetyp:", currentQ.type);
     console.log("Debug - Richtige Antwort aus DB:", correctAnswer);
-    console.log("Debug - Richtige Antwort Typ:", typeof correctAnswer);
     console.log("Debug - Gewählte Option:", opt);
-    console.log("Debug - Gewählte Option Typ:", typeof opt);
-    console.log("Debug - Normalisierte Antwort:", correctAnswer.trim().toLowerCase());
-    console.log("Debug - Normalisierte Option:", opt.trim().toLowerCase());
     
-    const isC = correctAnswer.trim().toLowerCase() === opt.trim().toLowerCase();
+    // Vergleiche die Antwort
+    const isC = (correctAnswer.trim().toLowerCase() === "richtig") === opt;
     console.log("Debug - Ist korrekt?", isC);
     
     const didAward = await awardNormal(currentQ.id, isC);
@@ -156,8 +152,8 @@ export function QuizContainer({
       }, 2000);
       
       await updateUserStats({
-        total_xp: globalUserStats.total_xp + xpDelta,
-        total_coins: globalUserStats.total_coins + coinDelta,
+        total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
+        total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
       });
     } else {
       // Auch wenn keine Belohnung vergeben wurde (z.B. weil die Frage bereits beantwortet wurde),
@@ -190,8 +186,8 @@ export function QuizContainer({
       setRoundXp((prev) => prev + xpDelta);
       setRoundCoins((prev) => Math.max(0, prev + coinDelta));
       await updateUserStats({
-        total_xp: globalUserStats.total_xp + xpDelta,
-        total_coins: globalUserStats.total_coins + coinDelta,
+        total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
+        total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
       });
     }
   }
@@ -205,6 +201,50 @@ export function QuizContainer({
     setUserInputAnswer("");
     setCurrentIndex(currentIndex + 1);
   }
+
+  // Invalidate userStats query when values change
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['userStats'] });
+  }, [roundXp, roundCoins, queryClient]);
+
+  const handleAnswer = async (isCorrect: boolean) => {
+    // Verhindern doppelter Ausführung während Animation läuft
+    if (isAnimationPlaying) return;
+    
+    console.log("QuizContainer - Von DragDropQuestion erhaltener isCorrect-Wert:", isCorrect);
+    
+    setLastAnswerCorrect(isCorrect);
+    setShowExplanation(true);
+    
+    if (!currentQ) return; // Sicherheitscheck für currentQ
+    
+    const didAward = await awardNormal(currentQ.id, isCorrect);
+    if (didAward && globalUserStats) {
+      // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
+      setIsAnimationPlaying(true);
+      
+      const xpDelta = isCorrect ? 10 : 0;
+      const coinDelta = isCorrect ? 1 : -1;
+      setRoundXp((prev) => prev + xpDelta);
+      setRoundCoins((prev) => Math.max(0, prev + coinDelta));
+      
+      // Belohnungsanimation auslösen
+      setRewardXp(isCorrect ? xpDelta : 0);
+      setRewardCoins(isCorrect ? coinDelta : 0);
+      setShowRewardAnimation(true);
+      
+      // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
+      setTimeout(() => {
+        setShowRewardAnimation(false);
+        setIsAnimationPlaying(false);
+      }, 2000);
+      
+      await updateUserStats({
+        total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
+        total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
+      });
+    }
+  };
 
   if (!user)
     return (
@@ -240,7 +280,6 @@ export function QuizContainer({
   if (isQuizEnd || currentIndex >= questions.length)
     return (
       <EndScreen
-        user={user}
         roundXp={roundXp}
         roundCoins={roundCoins}
         possibleRoundXp={possibleRoundXp} 
@@ -255,6 +294,9 @@ export function QuizContainer({
           setFiftyFiftyUsed(false);
           setHintUsed(false);
         }}
+        onOpenLeaderboard={onOpenLeaderboard}
+        onOpenShop={onOpenShop}
+        onOpenProfile={onOpenProfile}
       />
     );
 
@@ -266,17 +308,22 @@ export function QuizContainer({
       case "true_false":
         content = (
           <div className="flex gap-2">
-            {["Richtig", "Falsch"].map((opt) => (
-              <button
-                key={opt}
-                className="answer-button flex-1 inline-flex items-center justify-center"
-                onClick={async () => {
-                    await handleTrueFalseAnswer(opt);
-                }}
-              >
-                {opt}
-              </button>
-            ))}
+            <button
+              onClick={async () => {
+                await handleTrueFalseAnswer(true);
+              }}
+              className="answer-button flex-1 inline-flex items-center justify-center"
+            >
+              Richtig
+            </button>
+            <button
+              onClick={async () => {
+                await handleTrueFalseAnswer(false);
+              }}
+              className="answer-button flex-1 inline-flex items-center justify-center"
+            >
+              Falsch
+            </button>
           </div>
         );
         break;
@@ -284,44 +331,38 @@ export function QuizContainer({
         content = (
           <QuestionComponent
             question={{ ...currentQ, chapter_id: currentQ.chapter_id ?? 1 }}
-            onAnswer={async (selectedOption, isCorrect) => {
-                // Verhindern doppelter Ausführung während Animation läuft
-                if (isAnimationPlaying) return;
+            onAnswer={async (_selected: string, isCorrect: boolean) => {
+              // Verhindern doppelter Ausführung während Animation läuft
+              if (isAnimationPlaying) return;
+              
+              console.log("QuizContainer - Von QuestionComponent erhaltener isCorrect-Wert:", isCorrect);
+              
+              setLastAnswerCorrect(isCorrect);
+              setShowExplanation(true);
+              
+              const didAward = await awardNormal(currentQ.id, isCorrect);
+              if (didAward && globalUserStats) {
+                setIsAnimationPlaying(true);
                 
-                // Hier NICHT noch einmal die Korrektheit prüfen, sondern den Wert von QuestionComponent verwenden
-                // Die Anzeige der Richtigkeit kommt vom richtigen Parameter im QuizContainer
-                console.log("QuizContainer - Von QuestionComponent erhaltener isCorrect-Wert:", isCorrect);
+                const xpDelta = isCorrect ? 10 : 0;
+                const coinDelta = isCorrect ? 1 : -1;
+                setRoundXp((prev) => prev + xpDelta);
+                setRoundCoins((prev) => Math.max(0, prev + coinDelta));
                 
-                // Wir verwenden die Funktion von QuestionComponent
-                setLastAnswerCorrect(isCorrect);
-                setShowExplanation(true);
+                setRewardXp(isCorrect ? xpDelta : 0);
+                setRewardCoins(isCorrect ? coinDelta : 0);
+                setShowRewardAnimation(true);
                 
-                const didAward = await awardNormal(currentQ.id, isCorrect);
-                if (didAward && globalUserStats) {
-                  // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
-                  setIsAnimationPlaying(true);
-                  
-                  const xpDelta = isCorrect ? 10 : 0;
-                  const coinDelta = isCorrect ? 1 : -1;
-                  setRoundXp((prev) => prev + xpDelta);
-                  setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-                  
-                  // Belohnungsanimation auslösen
-                  setRewardXp(isCorrect ? xpDelta : 0);
-                  setRewardCoins(isCorrect ? coinDelta : 0);
-                  setShowRewardAnimation(true);
-                  
-                  // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
-                  setTimeout(() => {
-                    setShowRewardAnimation(false);
-                    setIsAnimationPlaying(false);
-                  }, 2000);
-                  
-                  await updateUserStats({
-                    total_xp: globalUserStats.total_xp + xpDelta,
-                    total_coins: globalUserStats.total_coins + coinDelta,
-                  });
-                }
+                setTimeout(() => {
+                  setShowRewardAnimation(false);
+                  setIsAnimationPlaying(false);
+                }, 2000);
+                
+                await updateUserStats({
+                  total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
+                  total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
+                });
+              }
             }}
           />
         );
@@ -363,8 +404,8 @@ export function QuizContainer({
                   }, 2000);
                   
                   await updateUserStats({
-                    total_xp: globalUserStats.total_xp + xpDelta,
-                    total_coins: globalUserStats.total_coins + coinDelta,
+                    total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
+                    total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
                   });
                 }
             }}
@@ -375,52 +416,14 @@ export function QuizContainer({
         content = (
           <DragDropQuestion
             questionId={currentQ.id}
-            questionText={currentQ.Frage}
-            onComplete={async (isCorrect) => {
-                // Verhindern doppelter Ausführung während Animation läuft
-                if (isAnimationPlaying) return;
-                
-                // Hier NICHT handleTrueFalseAnswer verwenden, sondern die gleiche Logik direkt implementieren
-                console.log("QuizContainer - Von DragDropQuestion erhaltener isCorrect-Wert:", isCorrect);
-                
-                setLastAnswerCorrect(isCorrect);
-                setShowExplanation(true);
-                
-                const didAward = await awardNormal(currentQ.id, isCorrect);
-                if (didAward && globalUserStats) {
-                  // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
-                  setIsAnimationPlaying(true);
-                  
-                  const xpDelta = isCorrect ? 10 : 0;
-                  const coinDelta = isCorrect ? 1 : -1;
-                  setRoundXp((prev) => prev + xpDelta);
-                  setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-                  
-                  // Belohnungsanimation auslösen
-                  setRewardXp(isCorrect ? xpDelta : 0);
-                  setRewardCoins(isCorrect ? coinDelta : 0);
-                  setShowRewardAnimation(true);
-                  
-                  // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
-                  setTimeout(() => {
-                    setShowRewardAnimation(false);
-                    setIsAnimationPlaying(false);
-                  }, 2000);
-                  
-                  await updateUserStats({
-                    total_xp: globalUserStats.total_xp + xpDelta,
-                    total_coins: globalUserStats.total_coins + coinDelta,
-                  });
-                }
-            }}
+            onComplete={handleAnswer}
           />
         );
         break;
       case "cases":
         content = (
           <CasesQuestion
-            question={{ ...currentQ, chapter_id: currentQ.chapter_id ?? 1 }}
-            user={user}
+            question={currentQ}
             onSubquestionAnswered={handleSubquestionAnswered}
             onComplete={async (result: CasesQuestionResult) => {
               await supabase.from("answered_questions").insert([
@@ -487,8 +490,8 @@ export function QuizContainer({
                 }
                 
                 await updateUserStats({
-                  total_xp: globalUserStats.total_xp + xpDelta,
-                  total_coins: globalUserStats.total_coins + coinDelta,
+                  total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
+                  total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
                 });
               }
             }}
@@ -544,8 +547,8 @@ export function QuizContainer({
                   setRoundCoins((prev) => Math.max(0, prev + coinDelta));
                   
                   await updateUserStats({
-                    total_xp: globalUserStats.total_xp + xpDelta,
-                    total_coins: globalUserStats.total_coins + coinDelta,
+                    total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
+                    total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
                   });
                 }
               }}
@@ -605,9 +608,6 @@ export function QuizContainer({
       
       {/* Kopfzeile mit Benutzerinfo und Statistiken */}
       <QuizHeadline
-        user={user}
-        userStats={userStats}
-        profile={profile}
         onOpenProfile={onOpenProfile}
         onOpenShop={onOpenShop}
         onOpenLeaderboard={onOpenLeaderboard}
@@ -759,8 +759,8 @@ export function QuizContainer({
                               }, 2000);
                               
                               await updateUserStats({
-                                total_xp: globalUserStats.total_xp + xpDelta,
-                                total_coins: globalUserStats.total_coins + coinDelta,
+                                total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
+                                total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
                               });
                             }
                           }
@@ -804,8 +804,8 @@ export function QuizContainer({
                               }, 2000);
                               
                               await updateUserStats({
-                                total_xp: globalUserStats.total_xp + xpDelta,
-                                total_coins: globalUserStats.total_coins + coinDelta,
+                                total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
+                                total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
                               });
                             }
                           }
@@ -853,7 +853,7 @@ export function QuizContainer({
               <div className="w-full flex flex-col gap-6">
                 <button
                   onClick={async () => {
-                    await handleTrueFalseAnswer("Richtig");
+                    await handleTrueFalseAnswer(true);
                   }}
                   className="w-full py-5 px-6 border-2 border-black text-black bg-white text-center font-medium text-lg rounded-none hover:bg-gray-100 transition-colors"
                 >
@@ -861,7 +861,7 @@ export function QuizContainer({
                 </button>
                 <button
                   onClick={async () => {
-                    await handleTrueFalseAnswer("Falsch");
+                    await handleTrueFalseAnswer(false);
                   }}
                   className="w-full py-5 px-6 border-2 border-black text-black bg-white text-center font-medium text-lg rounded-none hover:bg-gray-100 transition-colors"
                 >

@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient"; // Pfad ggf. anpassen
 import { motion, AnimatePresence } from "framer-motion";
 import "./ProfileScreen.css";
-// Importiere das Logo aus den Assets
-import logoSvg from "./assets/images/Bilder/Logo.svg";
 
 /** Datenstrukturen **/
 interface Profile {

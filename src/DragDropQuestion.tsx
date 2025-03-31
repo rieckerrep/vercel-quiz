@@ -20,7 +20,6 @@ interface DragGroup {
 
 // Props für DragDropQuestion
 interface DragDropQuestionProps {
-  questionText: string;
   questionId: number;
   onComplete: (overallCorrect: boolean) => void;
 }
@@ -46,7 +45,7 @@ const DraggableItem: React.FC<DraggableItemProps> = ({ pair, isDropped }) => {
   );
 
   return (
-    <div ref={drag}>
+    <div ref={drag as any}>
       <motion.div
         className={`
           p-3 rounded-md shadow-sm mb-3 select-none
@@ -103,7 +102,7 @@ const DropTarget: React.FC<DropTargetProps> = ({ pair, onDrop, isMatched }) => {
   ].join(' ');
 
   return (
-    <div ref={drop}>
+    <div ref={drop as any}>
       <motion.div
         className={targetClasses}
         initial={{ scale: 1 }}
@@ -135,9 +134,8 @@ const DropTarget: React.FC<DropTargetProps> = ({ pair, onDrop, isMatched }) => {
 };
 
 export default function DragDropQuestion({
-  questionText,
   questionId,
-  onComplete,
+  onComplete
 }: DragDropQuestionProps) {
   // Gruppe und Paare laden
   const [group, setGroup] = useState<DragGroup | null>(null);

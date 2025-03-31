@@ -1,5 +1,5 @@
 // src/components/UniversityLeaderboard.tsx
-import React, { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
 
 interface UniversityRow {
@@ -7,27 +7,17 @@ interface UniversityRow {
   xp_sum: number;
 }
 
-const UniversityLeaderboard: React.FC = () => {
-  const [data, setData] = useState<UniversityRow[]>([]);
-  const [loading, setLoading] = useState(true);
+const UniversityLeaderboard = () => {
+  const { data: leaderboardData, isLoading } = useQuery<UniversityRow[]>({
+    queryKey: ['universityLeaderboard'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_university_leaderboard');
+      if (error) throw error;
+      return data;
+    }
+  });
 
-  useEffect(() => {
-    const fetchLeaderboard = async () => {
-      const { data: lbData, error } = await supabase.rpc(
-        "get_university_leaderboard"
-      );
-      if (error) {
-        console.error("Error fetching university leaderboard:", error);
-      } else {
-        setData(lbData as UniversityRow[]);
-      }
-      setLoading(false);
-    };
-
-    fetchLeaderboard();
-  }, []);
-
-  if (loading) return <div>Lade Universitäts-Leaderboard...</div>;
+  if (isLoading) return <div>Lade Universitäts-Leaderboard...</div>;
 
   return (
     <div>
@@ -37,11 +27,11 @@ const UniversityLeaderboard: React.FC = () => {
           <tr>
             <th>Platz</th>
             <th>Universität</th>
-            <th>Punkte (XP)</th>
+            <th>Gesamt-XP</th>
           </tr>
         </thead>
         <tbody>
-          {data.map((row, index) => (
+          {leaderboardData?.map((row, index) => (
             <tr key={row.university}>
               <td>{index + 1}</td>
               <td>{row.university}</td>

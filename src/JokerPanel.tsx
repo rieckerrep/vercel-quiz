@@ -1,5 +1,4 @@
 // JokerPanel.tsx
-import React from "react";
 import { xpBoostIcon, streakBoostIcon, fiftyFiftyIcon } from "./assets/images";
 
 interface JokerPanelProps {

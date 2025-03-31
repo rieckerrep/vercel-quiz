@@ -1,19 +1,21 @@
 // LeaderboardOverlay.tsx
-import React, { useState } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import LeagueLeaderboard from "./LeagueLeaderboard";
 import UniversityLeaderboard from "./UniversityLeaderboard";
 import PlayerLeaderboard from "./PlayerLeaderboard";
 import "./LeaderboardOverlay.css"; // Das separate CSS für das Overlay
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "./supabaseClient";
+import { Database } from "./types/supabase";
+
+type UserStats = Database['public']['Tables']['user_stats']['Row'];
 
 interface LeaderboardOverlayProps {
-  currentUserId: string;
-  leagueName: string;
   onClose: () => void;
 }
 
 export default function LeaderboardOverlay({
-  currentUserId,
   onClose,
 }: LeaderboardOverlayProps) {
   // State für die aktuell ausgewählte Leaderboard-Kategorie
@@ -21,19 +23,35 @@ export default function LeaderboardOverlay({
     "league" | "university" | "player"
   >("league");
 
+  // Lade die Benutzerdaten aus der Datenbank
+  const { data: userStats } = useQuery({
+    queryKey: ['userStats'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Nicht eingeloggt');
+      
+      const { data, error } = await supabase
+        .from('user_stats')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+        
+      if (error) throw error;
+      return data as UserStats;
+    }
+  });
+
   let content;
   if (selectedLeaderboard === "league") {
-    // Hier den gewünschten Liga-Namen übergeben, z.B. "Bronzeliga"
     content = (
       <LeagueLeaderboard
-        currentUserId={currentUserId}
-        leagueName="Bronzeliga"
+        leagueName={userStats?.current_league || "Bronzeliga"}
       />
     );
   } else if (selectedLeaderboard === "university") {
-    content = <UniversityLeaderboard currentUserId={currentUserId} />;
+    content = <UniversityLeaderboard />;
   } else if (selectedLeaderboard === "player") {
-    content = <PlayerLeaderboard currentUserId={currentUserId} />;
+    content = <PlayerLeaderboard />;
   }
 
   return (

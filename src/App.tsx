@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import "./index.css"; // oder tailwind.css – Deine zentrale CSS-Datei
+import { useState, useEffect } from "react";
+import "./index.css";
 import QuizContainer from "./QuizContainer";
 import LoginScreen from "./LoginScreen";
 import ProfileScreen from "./ProfileScreen";
@@ -9,13 +9,19 @@ import { supabase } from "./supabaseClient";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 function App() {
+  const [userId, setUserId] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
-  // activeScreen kann "quiz", "profile", "shop" oder "leaderboard" sein
   const [activeScreen, setActiveScreen] = useState<
     "quiz" | "profile" | "shop" | "leaderboard"
   >("quiz");
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   
   const queryClient = useQueryClient();
+
+  const handleLogin = (userId: string) => {
+    setUserId(userId);
+    setActiveScreen("quiz");
+  };
 
   // Session abrufen
   useEffect(() => {
@@ -39,35 +45,35 @@ function App() {
 
   // Profil laden
   const {
-    data: profile,
+    data: profileData,
     isLoading: profileLoading,
     error: profileError,
   } = useQuery({
-    queryKey: ["profile", user?.id],
+    queryKey: ["profile", userId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
-        .eq("id", user!.id)
+        .eq("id", userId)
         .maybeSingle();
       if (error) throw new Error(error.message);
       return data;
     },
-    enabled: !!user,
+    enabled: !!userId,
   });
 
   // User-Stats laden
   const {
-    data: userStats,
+    data: userStatsData,
     isLoading: statsLoading,
     error: statsError,
   } = useQuery({
-    queryKey: ["userStats", user?.id],
+    queryKey: ["userStats", userId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("user_stats")
         .select("*")
-        .eq("user_id", user!.id)
+        .eq("user_id", userId)
         .maybeSingle();
       if (error) throw new Error(error.message);
       if (!data) return null;
@@ -80,11 +86,11 @@ function App() {
         bronze_medals: Number(data.bronze_medals),
       };
     },
-    enabled: !!user,
+    enabled: !!userId,
   });
 
   if (!user) {
-    return <LoginScreen />;
+    return <LoginScreen onLogin={handleLogin} />;
   }
 
   if (profileLoading || statsLoading) {
@@ -110,8 +116,8 @@ function App() {
         <div className="absolute top-0 left-0 w-full min-h-screen bg-lightBg p-4">
           <QuizContainer
             user={user}
-            profile={profile}
-            userStats={userStats}
+            profile={profileData}
+            userStats={userStatsData}
             onOpenProfile={() => setActiveScreen("profile")}
             onOpenShop={() => setActiveScreen("shop")}
             onOpenLeaderboard={() => setActiveScreen("leaderboard")}
@@ -125,8 +131,8 @@ function App() {
           <ProfileScreen
             onBack={() => setActiveScreen("quiz")}
             user={user}
-            profile={profile}
-            userStats={userStats}
+            profile={profileData}
+            userStats={userStatsData}
           />
         </div>
       )}
@@ -135,32 +141,18 @@ function App() {
       {activeScreen === "shop" && (
         <div className="absolute top-0 left-0 w-full min-h-screen bg-lightBg p-4">
           <ShopScreen
-            userId={user.id}
-            profile={profile}
-            userStats={userStats}
+            userId={userId!}
+            profile={profileData}
+            userStats={userStatsData}
             onBack={() => setActiveScreen("quiz")}
-            updateUserStats={(updates) => {
-              // Aktualisiere die Benutzerstatistiken im lokalen State
-              queryClient.setQueryData(["userStats", user.id], {
-                ...userStats,
-                ...updates
-              });
-              
-              // ReactQuery Cache aktualisieren
+            updateUserStats={() => {
               queryClient.invalidateQueries({
-                queryKey: ["userStats", user.id]
+                queryKey: ["userStats", userId]
               });
             }}
-            updateActiveAvatar={(avatarUrl) => {
-              // Aktualisiere das Profilbild im lokalen State
-              queryClient.setQueryData(["profile", user.id], {
-                ...profile,
-                avatar_url: avatarUrl
-              });
-              
-              // ReactQuery Cache aktualisieren, damit alle Komponenten das neue Profilbild sehen
+            updateActiveAvatar={() => {
               queryClient.invalidateQueries({
-                queryKey: ["profile", user.id]
+                queryKey: ["profile", userId]
               });
             }}
           />
@@ -171,8 +163,6 @@ function App() {
       {activeScreen === "leaderboard" && (
         <div className="absolute top-0 left-0 w-full min-h-screen bg-lightBg p-4">
           <LeaderboardOverlay
-            currentUserId={user.id}
-            leagueName="Bronzeliga"
             onClose={() => setActiveScreen("quiz")}
           />
         </div>

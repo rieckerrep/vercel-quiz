@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import { motion } from "framer-motion";
 
@@ -105,6 +105,7 @@ export default function MultipleChoiceQuestion({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">{questionText}</h2>
         <div className="space-y-4 mb-6">
           {options.map((opt) => (
             <motion.div 

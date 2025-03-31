@@ -1,16 +1,12 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "./supabaseClient";
+import { Database } from "./types/supabase";
+import { useQuery } from "@tanstack/react-query";
+
+type Profile = Database['public']['Tables']['profiles']['Row'];
+type UserStats = Database['public']['Tables']['user_stats']['Row'];
 
 interface QuizHeadlineProps {
-  userStats: {
-    total_xp: number;
-    total_coins: number;
-  } | null;
-  profile: {
-    username: string;
-    avatar_url: string;
-    id: string;
-  } | null;
   onOpenProfile: () => void;
   onOpenShop: () => void;
   onOpenLeaderboard: () => void;
@@ -18,8 +14,6 @@ interface QuizHeadlineProps {
 }
 
 export default function QuizHeadline({
-  userStats,
-  profile,
   onOpenProfile,
   onOpenShop,
   onOpenLeaderboard,
@@ -28,22 +22,58 @@ export default function QuizHeadline({
   const xpBoxRef = useRef<HTMLDivElement>(null);
   const coinBoxRef = useRef<HTMLDivElement>(null);
 
-  const prevXpRef = useRef<number>(userStats?.total_xp || 0);
-  const prevCoinsRef = useRef<number>(userStats?.total_coins || 0);
+  // Profildaten laden
+  const { data: profile } = useQuery({
+    queryKey: ['profile'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Nicht eingeloggt');
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+        
+      if (error) throw error;
+      return data as Profile;
+    }
+  });
+
+  // Statistiken laden
+  const { data: userStats } = useQuery({
+    queryKey: ['userStats'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Nicht eingeloggt');
+      
+      const { data, error } = await supabase
+        .from('user_stats')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+        
+      if (error) throw error;
+      return data as UserStats;
+    }
+  });
+
+  const prevXpRef = useRef<number>(userStats?.total_xp ?? 0);
+  const prevCoinsRef = useRef<number>(userStats?.total_coins ?? 0);
   const hasMounted = useRef(false);
 
   useEffect(() => {
     if (!userStats) return;
 
     if (!hasMounted.current) {
-      prevXpRef.current = userStats.total_xp;
-      prevCoinsRef.current = userStats.total_coins;
+      prevXpRef.current = userStats.total_xp ?? 0;
+      prevCoinsRef.current = userStats.total_coins ?? 0;
       hasMounted.current = true;
       return;
     }
 
     // XP-Animation
-    const currentXp = userStats.total_xp;
+    const currentXp = userStats.total_xp ?? 0;
     const xpDiff = currentXp - prevXpRef.current;
     if (xpDiff !== 0 && xpBoxRef.current) {
       const xpChangeEl = document.createElement("div");
@@ -60,7 +90,7 @@ export default function QuizHeadline({
     prevXpRef.current = currentXp;
 
     // Coins-Animation
-    const currentCoins = userStats.total_coins;
+    const currentCoins = userStats.total_coins ?? 0;
     const coinDiff = currentCoins - prevCoinsRef.current;
     if (coinDiff !== 0 && coinBoxRef.current) {
       const coinChangeEl = document.createElement("div");
@@ -90,24 +120,24 @@ export default function QuizHeadline({
     <div className="flex items-center justify-between p-4 border-b border-gray-200">
       <div className="flex items-center gap-3">
         <div className="w-12 h-12 bg-gray-300 rounded-full overflow-hidden">
-          {profile?.avatar_url ? (
+          {profile?.avatar_url && (
             <img
               src={profile.avatar_url}
               alt="Avatar"
               className="w-full h-full object-cover"
             />
-          ) : null}
+          )}
         </div>
-        <div className="font-bold text-gray-800">{profile?.username || "MarceliTheBoss"}</div>
+        <div className="font-bold text-gray-800">{profile?.username}</div>
       </div>
       
       <div className="flex items-center gap-3">
         <div className="px-4 py-2 bg-blue-500 text-white rounded-full flex items-center" ref={xpBoxRef}>
-          <span className="font-medium">{userStats?.total_xp || 200}</span>
+          <span className="font-medium">{userStats?.total_xp}</span>
           <span className="ml-1">⭐</span>
         </div>
         <div className="px-4 py-2 bg-yellow-400 text-black rounded-full flex items-center" ref={coinBoxRef}>
-          <span className="font-medium">Gesamt: {userStats?.total_coins || 34}</span>
+          <span className="font-medium">Gesamt: {userStats?.total_coins}</span>
           <span className="ml-1">🪙</span>
         </div>
         <div className="px-4 py-2 bg-yellow-400 text-black rounded-full flex items-center">

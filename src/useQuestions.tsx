@@ -6,8 +6,9 @@ export interface Question {
   id: number;
   type: string;
   Frage: string;
-  Begründung?: string;
+  Begründung: string | null;
   ["Richtige Antwort"]?: string;
+  chapter_id: number;
   [key: string]: any; // für dynamische Felder wie bei "cases" oder "lueckentext"
 }
 
@@ -22,7 +23,12 @@ export function useQuestions(chapterId: number) {
         .eq("chapter_id", chapterId);
 
       if (error) throw new Error(error.message);
-      return data as Question[];
+      
+      // Konvertiere undefined zu null für das Begründung-Feld
+      return (data || []).map(question => ({
+        ...question,
+        Begründung: question.Begründung || null
+      })) as Question[];
     },
     staleTime: 60 * 1000, // 1 Minute zwischencachen
   });

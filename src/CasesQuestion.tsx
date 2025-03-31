@@ -1,23 +1,17 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import { motion } from "framer-motion";
+import { Database } from "./types/supabase";
+
+type CasesSubquestion = Database['public']['Tables']['cases_subquestions']['Row'];
 
 // Hauptfrage-Interface
 interface Question {
   id: number;
-  Frage: string;
   type: string;
-  "Richtige Antwort": string;
-  Begründung?: string;
+  Frage: string;
+  Begründung: string | null;
   chapter_id: number;
-}
-
-// Subquestion-Interface
-interface Subquestion {
-  id: number;
-  statement_text: string;
-  correct_answer: string;
-  explanation?: string;
 }
 
 // Das Objekt, das wir an onComplete schicken
@@ -28,20 +22,16 @@ export interface CasesQuestionResult {
 
 interface CasesQuestionProps {
   question: Question;
-  user: any; // falls du user-Daten brauchst
-  // Ruft der Parent (QuizContainer) auf, wenn alle Subfragen fertig sind
   onComplete: (result: CasesQuestionResult) => void;
-  // Ruft der Parent bei jeder Subfrage an, um XP zu vergeben
   onSubquestionAnswered: (subId: number, isCorrect: boolean) => void;
 }
 
 export default function CasesQuestion({
   question,
-  user,
   onComplete,
   onSubquestionAnswered,
 }: CasesQuestionProps) {
-  const [subquestions, setSubquestions] = useState<Subquestion[]>([]);
+  const [subquestions, setSubquestions] = useState<CasesSubquestion[]>([]);
   const [answers, setAnswers] = useState<boolean[]>([]);
   const [currentSubIndex, setCurrentSubIndex] = useState(0);
   const [loading, setLoading] = useState(true);

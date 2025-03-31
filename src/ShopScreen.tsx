@@ -12,15 +12,18 @@ interface ShopAvatar {
   active: boolean;
 }
 
-interface UserStats {
-  total_coins: number;
-  total_xp: number;
-}
-
 interface ShopScreenProps {
-  onBack: () => void;
   userId: string;
-  userStats: UserStats;
+  profile: {
+    username: string;
+    avatar_url: string;
+    id: string;
+  };
+  userStats: {
+    total_xp: number;
+    total_coins: number;
+  };
+  onBack: () => void;
   updateUserStats: (updates: { total_xp: number; total_coins: number }) => void;
   updateActiveAvatar: (avatarUrl: string) => void;
 }
@@ -225,11 +228,6 @@ export function ShopScreen({
     
     setAnimating(false);
   }
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { duration: 0.5 } }
-  };
 
   const itemVariants = {
     hidden: { opacity: 0, y: 20 },

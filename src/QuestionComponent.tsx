@@ -1,4 +1,3 @@
-import React from "react";
 import { motion } from "framer-motion";
 
 interface Question {
@@ -6,7 +5,7 @@ interface Question {
   Frage: string;
   type: string;
   "Richtige Antwort"?: string;
-  Begründung?: string;
+  Begründung: string | null;
   "Antwort A"?: string;
   "Antwort B"?: string;
   "Antwort C"?: string;

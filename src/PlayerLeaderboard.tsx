@@ -1,5 +1,6 @@
 // src/components/PlayerLeaderboard.tsx
 import React, { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
 
 interface PlayerRow {
@@ -7,27 +8,17 @@ interface PlayerRow {
   xp: number;
 }
 
-const PlayerLeaderboard: React.FC = () => {
-  const [data, setData] = useState<PlayerRow[]>([]);
-  const [loading, setLoading] = useState(true);
+const PlayerLeaderboard = () => {
+  const { data: leaderboardData, isLoading } = useQuery<PlayerRow[]>({
+    queryKey: ['playerLeaderboard'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_player_leaderboard');
+      if (error) throw error;
+      return data;
+    }
+  });
 
-  useEffect(() => {
-    const fetchLeaderboard = async () => {
-      const { data: lbData, error } = await supabase.rpc(
-        "get_player_leaderboard"
-      );
-      if (error) {
-        console.error("Error fetching player leaderboard:", error);
-      } else {
-        setData(lbData as PlayerRow[]);
-      }
-      setLoading(false);
-    };
-
-    fetchLeaderboard();
-  }, []);
-
-  if (loading) return <div>Lade Spieler-Leaderboard...</div>;
+  if (isLoading) return <div>Lade Spieler-Leaderboard...</div>;
 
   return (
     <div>
@@ -37,11 +28,11 @@ const PlayerLeaderboard: React.FC = () => {
           <tr>
             <th>Platz</th>
             <th>Spieler</th>
-            <th>XP</th>
+            <th>Gesamt-XP</th>
           </tr>
         </thead>
         <tbody>
-          {data.map((row, index) => (
+          {leaderboardData?.map((row, index) => (
             <tr key={row.username}>
               <td>{index + 1}</td>
               <td>{row.username}</td>

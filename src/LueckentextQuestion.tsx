@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 
 interface LueckentextQuestionProps {
   questionText: string;
   correctAnswer: string;
   onComplete: (isCorrect: boolean) => void;
-  hint?: string;
+  hint: string | null;
 }
 
 export default function LueckentextQuestion({
@@ -111,16 +111,10 @@ export default function LueckentextQuestion({
           />
         </div>
 
-        {hint && isAnswerSubmitted && (
-          <motion.div 
-            className="bg-gray-100 p-3 rounded-md border-l-4 border-yellow-400"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            transition={{ duration: 0.3 }}
-          >
-            <div className="text-sm font-medium text-gray-700 mb-1">Hinweis:</div>
-            <div className="text-sm text-gray-600">{hint}</div>
-          </motion.div>
+        {hint && (
+          <div className="text-sm text-gray-600 mt-2">
+            <span className="font-medium">Tipp:</span> {hint}
+          </div>
         )}
         
         <div className="flex justify-end mt-2">

@@ -1,16 +1,18 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { goldMedal, silverMedal, bronzeMedal, scaleIcon } from "./assets/images";
 import "./EndScreen.css";
 
 export interface EndScreenProps {
-  user: any;
   roundXp: number;
   possibleRoundXp?: number;
   roundCoins: number;
   medalType: string;
   onRestart: () => void;
+  onOpenLeaderboard: () => void;
+  onOpenShop: () => void;
+  onOpenProfile: () => void;
 }
 
 interface Profile {
@@ -42,12 +44,14 @@ interface LeagueData {
 }
 
 export default function EndScreen({
-  user,
   roundXp,
   possibleRoundXp = 0,
   roundCoins,
   medalType,
   onRestart,
+  onOpenLeaderboard,
+  onOpenShop,
+  onOpenProfile,
 }: EndScreenProps) {
   // Halbkreis-Animation (rechte Seite)
   const [circleDash, setCircleDash] = useState(0);
@@ -528,14 +532,32 @@ export default function EndScreen({
             </div>
           </motion.div>
           
-          <motion.button
-            className="mt-auto bg-green-600 hover:bg-green-700 text-white py-3 px-8 rounded-lg font-bold transition-colors"
-            onClick={onRestart}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            Wiederholen
-          </motion.button>
+          <div className="flex flex-col gap-4 mt-8">
+            <button
+              onClick={onRestart}
+              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              Neue Runde starten
+            </button>
+            <button
+              onClick={onOpenLeaderboard}
+              className="px-6 py-3 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              Bestenliste anzeigen
+            </button>
+            <button
+              onClick={onOpenShop}
+              className="px-6 py-3 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              Shop öffnen
+            </button>
+            <button
+              onClick={onOpenProfile}
+              className="px-6 py-3 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              Profil anzeigen
+            </button>
+          </div>
         </motion.div>
       </div>
     </motion.div>

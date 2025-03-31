@@ -1,0 +1,17 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Grundprinzip: ALLE Daten MÜSSEN aus der Supabase-Datenbank kommen
+Keine Ausnahmen für:
+Standardwerte
+Hardcoded Werte
+Platzhalter-Texte
+Technische Umsetzung:
+Datenbankabfragen
+Typen aus supabase.ts verwenden
+Korrekte Tabellen gemäß der Datenbankstruktur nutzen
+Die Datenbankstruktur findet sich in [supabase.ts](mdc:src/types/supabase.ts)
+
+Du kannst Platzhalter als Fallback nutzen - aber auch nur dafür.

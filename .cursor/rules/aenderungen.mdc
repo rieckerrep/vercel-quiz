@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Wenn du Dateien grundlegend änderst oder im Stil ändern sollst, achte IMMER darauf dass die Grundlogik und Grundfunktionen erhalten bleiben. Der Stil soll nie zu Lasten der Funktionen und Logik gehen.
+
+Überprüfe auch, ob du versehentlich Funktionalitäten beseitigist, wenn du Fehler korrigierst.

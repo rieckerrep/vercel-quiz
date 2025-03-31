@@ -1,54 +1,69 @@
-# React + TypeScript + Vite
+# RieckerRep Quiz-App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Entwicklungsrichtlinien
 
-Currently, two official plugins are available:
+### Datenbankregeln
+- **Keine Hardcoded-Werte**: Alle Daten müssen aus der Supabase-Datenbank geladen werden
+- **Keine Standardwerte**: Keine Default-Werte verwenden, die nicht aus der Datenbank kommen
+- **React Query**: Für alle Datenbankabfragen `useQuery` verwenden
+- **Typisierung**: Alle Typen aus `src/types/supabase.ts` importieren
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Tabellenstruktur
+Die Anwendung nutzt folgende Haupttabellen:
 
-## Expanding the ESLint configuration
+#### Benutzerdaten
+- `profiles`: Benutzerprofile (username, avatar_url)
+- `user_stats`: Benutzerstatistiken (XP, Coins, Medaillen, etc.)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+#### Quiz-Daten
+- `questions`: Quizfragen und Antworten
+- `answered_questions`: Beantwortete Fragen
+- `chapters`: Kapitelstruktur
+- `courses`: Kursorganisation
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+#### Spezielle Fragetypen
+- `dragdrop_groups` & `dragdrop_pairs`: Drag&Drop-Fragen
+- `cases_subquestions`: Fallbasierte Fragen
+- `multiple_choice_options`: Multiple-Choice-Fragen
+
+#### Gamification
+- `league_positions`: Ligasystem
+- `levels`: Levelsystem
+
+### Beispiel für korrekten Datenbankzugriff
+```typescript
+import { Database } from "./types/supabase";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "./supabaseClient";
+
+// Typen aus der Datenbank
+type Profile = Database['public']['Tables']['profiles']['Row'];
+type UserStats = Database['public']['Tables']['user_stats']['Row'];
+
+// Datenbankabfrage mit useQuery
+const { data: profile } = useQuery({
+  queryKey: ['profile'],
+  queryFn: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Nicht eingeloggt');
+    
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+      
+    if (error) throw error;
+    return data as Profile;
+  }
+});
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Mobile Responsivität
+- Die App muss auf allen Geräten funktionieren
+- Optimiert für die Wix-App
+- Anpassungsfähig für iFrame-Integration
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
-```
+## Deployment
+- Integration in Wix-Frontend über "Wix Programs"
+- Mögliche Einbindung über iFrame oder als HTML

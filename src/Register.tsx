@@ -7,7 +7,7 @@ export default function Register() {
   const [message, setMessage] = useState("");
 
   const handleRegister = async () => {
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
     });
