@@ -17,11 +17,6 @@ interface UserStats {
   total_xp: number;
 }
 
-interface Profile {
-  username: string;
-  avatar_url: string;
-}
-
 interface ShopScreenProps {
   onBack: () => void;
   userId: string;

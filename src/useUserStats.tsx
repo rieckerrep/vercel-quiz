@@ -1,8 +1,8 @@
 // useUserStats.ts
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
 
-export interface UserStats {
+interface UserStats {
   gold: number;
   silver: number;
   bronze: number;
@@ -64,15 +64,10 @@ export function useUserStats(userId: string) {
     }
   );
 
-  const mutation = useMutation<UserStats | null, Error, Partial<UserStats>>({
-    mutationFn: (updates) => updateUserStatsDB(userId, updates),
-  });
-
   return {
     userStats: data,
     isLoading,
     error,
     refetch,
-    updateUserStats: mutation.mutateAsync,
   };
 }

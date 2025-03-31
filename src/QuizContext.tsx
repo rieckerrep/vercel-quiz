@@ -22,7 +22,17 @@ interface QuizContextProviderProps {
   children: ReactNode;
 }
 
-const QuizContext = createContext<QuizContextType | undefined>(undefined);
+const QuizContext = createContext<QuizContextType>({
+  currentIndex: 0,
+  setCurrentIndex: () => {},
+  roundXp: 0,
+  setRoundXp: () => {},
+  roundCoins: 0,
+  setRoundCoins: () => {},
+  possibleRoundXp: 0,
+  setPossibleRoundXp: () => {},
+  awardQuestion: async () => false,
+});
 
 export const QuizProvider: React.FC<QuizContextProviderProps> = ({ children }) => {
   const [currentIndex, setCurrentIndex] = useState(0);

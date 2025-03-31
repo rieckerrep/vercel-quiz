@@ -20,7 +20,10 @@ const TrueFalseQuestion: React.FC<TrueFalseQuestionProps> = ({
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full space-y-4">
+      <div className="text-xl font-medium text-gray-800">
+        {questionText}
+      </div>
       <div className="flex justify-between w-full gap-4">
         {["Richtig", "Falsch"].map((option) => (
           <button
