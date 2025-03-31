@@ -1,0 +1,239 @@
+/* EndScreen.css */
+
+/* Container-Struktur */
+.end-screen-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.end-screen-content-row {
+  display: flex;
+  flex: 1;
+}
+
+/* ---------- Linke Spalte (schwarz) ---------- */
+.end-screen-left-panel {
+  background-color: #000;
+  color: #fff;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative; /* damit das League-Wappen platzierbar ist */
+}
+
+/* Container für Name + Wappen */
+.end-screen-name-league-container {
+  position: relative;
+  width: 100%;
+  text-align: center; /* Name bleibt mittig */
+  margin-bottom: 6px;
+}
+
+.end-screen-username {
+  font-size: 2rem;
+  margin: 0; /* eng beieinander */
+}
+
+.end-screen-league-top {
+  position: absolute;
+  top: 0;
+  right: 10px;
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+}
+
+/* Uni */
+.end-screen-university {
+  color: grey;
+  font-size: 0.9rem;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+/* Zeile: Avatar + Level-Icon */
+.end-screen-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+/* Avatar */
+.end-screen-avatar {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Level-Icon */
+.end-screen-level-icon-sm {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+}
+
+/* Kreis für Level */
+.end-screen-level-circle {
+  width: 170px; /* etwas größer */
+  height: 170px;
+  margin: 10px auto 20px auto;
+}
+
+.end-screen-level-circle-svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Medaillen in mittlerer Größe */
+.end-screen-medals-row {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.end-screen-medal-cell {
+  text-align: center;
+}
+
+.end-screen-medal-img {
+  width: 35px;
+  height: 35px;
+}
+
+.end-screen-medal-value {
+  margin-top: 2px; /* enger zur Zahl */
+  font-size: 1.1rem; /* etwas größerer Text */
+}
+
+/* ---------- Rechte Spalte (weiß) ---------- */
+.end-screen-right-panel {
+  background-color: #fff;
+  color: #000;
+  padding: 20px;
+  width: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Waage oben */
+.end-screen-scale-img {
+  width: 100px;
+  height: auto;
+  margin-bottom: 20px;
+}
+
+/* Fragen-Anzeige */
+.end-screen-questions-answered {
+  margin: 10px 0;
+  font-size: 1rem;
+  color: #000;
+}
+
+/* Halbkreis */
+.end-screen-halfcircle-container {
+  width: 300px;
+  height: 150px;
+  margin: 0 auto 10px auto;
+}
+
+.end-screen-halfcircle-svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Prozentanzeige */
+.end-screen-round-progress {
+  font-size: 1rem;
+  margin-top: 5px;
+}
+
+/* Medaillenanzeige (wenn in dieser Runde eine Medaille) */
+.end-screen-medal-text {
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+/* Wiederholen-Button */
+.end-screen-repeat-button {
+  margin-top: auto;
+  margin-bottom: 20px;
+  padding: 12px 20px;
+  font-size: 1.1em;
+  cursor: pointer;
+  background: green;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+}
+
+.end-screen-repeat-button:hover {
+  background-color: #006600;
+}
+
+/* EndScreen Styles */
+.quiz-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  min-height: 600px;
+}
+
+/* Animation Klassen */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Mobile Responsive Anpassungen */
+@media (max-width: 768px) {
+  .quiz-container {
+    height: auto;
+    border-radius: 0;
+    max-width: 100%;
+  }
+}

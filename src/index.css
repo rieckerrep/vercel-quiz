@@ -1,0 +1,622 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =================== Globale Basis-Styles =================== */
+@layer base {
+  /* Reset und Standardwerte */
+  * {
+    @apply box-border m-0 p-0;
+    font-family: Cambria, serif;
+  }
+  body {
+    @apply bg-lightBg text-brandBlack;
+  }
+  /* Dark Mode: Nutzt die Benutzer-Voreinstellung */
+  @media (prefers-color-scheme: dark) {
+    body {
+      @apply bg-black text-white;
+    }
+    /* Beispiel: Anpassung für Container im Dark Mode */
+    .quiz-container {
+      @apply bg-gray-800 border-white;
+    }
+    .question-panel {
+      @apply bg-gray-700 text-white;
+    }
+    .answer-panel {
+      @apply bg-gray-800 text-white;
+    }
+  }
+}
+
+/* =================== Komponenten-Styles =================== */
+@layer components {
+  /* Globaler Quiz-Container (entspricht deinem alten .quiz-container) */
+  .quiz-container {
+    @apply border-2 border-gray-800 w-full flex flex-col;
+  }
+
+  .quiz-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background-color: white;
+    border-bottom: 1px solid #eee;
+  }
+
+  .user-profile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .user-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background-color: #e0e0e0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .stats-container {
+    display: flex;
+    gap: 10px;
+  }
+
+  .stat-pill {
+    padding: 6px 12px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 500;
+  }
+
+  .xp-pill {
+    background-color: #2196f3;
+    color: white;
+  }
+
+  .coins-pill {
+    background-color: #ffc107;
+    color: black;
+  }
+
+  .round-pill {
+    background-color: #ffc107;
+    color: black;
+  }
+
+  .question-nav {
+    display: flex;
+    flex-wrap: wrap;
+    border-bottom: 1px solid #eee;
+  }
+
+  .question-number {
+    width: 40px;
+    height: 40px;
+    background-color: #000;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .question-content {
+    display: flex;
+    flex-grow: 1;
+  }
+
+  .question-area {
+    width: 60%;
+    background-color: black;
+    color: white;
+    padding: 20px;
+    position: relative;
+  }
+
+  .question-info {
+    margin-bottom: 20px;
+  }
+
+  .progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: #000;
+    margin: 10px 0 20px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background-color: #ffc107;
+  }
+
+  .question-text {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 20px;
+  }
+
+  .answers-area {
+    width: 40%;
+    background-color: white;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .answer-buttons {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .answer-button {
+    padding: 15px;
+    background-color: white;
+    border: 1px solid black;
+    color: black;
+    font-size: 18px;
+    font-weight: 500;
+    text-align: center;
+    cursor: pointer;
+  }
+
+  .jokers {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    display: flex;
+    gap: 15px;
+  }
+
+  .joker {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+  }
+
+  .joker-xp {
+    background-color: #ffc107;
+    color: black;
+  }
+
+  .joker-x2 {
+    background-color: #ffc107;
+    color: black;
+  }
+
+  .joker-check {
+    background-color: #4caf50;
+    color: white;
+  }
+
+  .check-icon {
+    width: 200px;
+    height: 200px;
+    margin: 0 auto;
+  }
+
+  /* Zweispaltiges Layout */
+  .content-row {
+    @apply flex;
+  }
+  .question-panel {
+    @apply w-3/5 bg-black text-white p-6 relative min-h-[500px];
+  }
+  .answer-panel {
+    @apply w-2/5 bg-white p-6 flex items-center justify-center;
+  }
+
+  /* Header-Bar und Frageauswahl */
+  .header-bar {
+    @apply flex items-center p-3 border-b border-gray-200 gap-3;
+  }
+  .question-selection-row {
+    @apply flex border-b border-gray-200;
+  }
+  .question-selection {
+    @apply flex;
+  }
+  .question-select-item {
+    @apply w-12 h-12 flex items-center justify-center font-bold text-lg bg-black text-white;
+  }
+  .question-select-item:hover {
+    @apply bg-grayDark;
+  }
+  .question-select-item.answered {
+    @apply bg-gray-700 text-white;
+  }
+  .question-select-item.active {
+    @apply bg-black text-white;
+  }
+
+  /* Fortschrittsanzeige im Fragebereich */
+  .question-header-bar {
+    @apply flex items-center mb-3;
+  }
+  .custom-progress-bar-container {
+    @apply flex-grow h-2 bg-black ml-3;
+  }
+  .custom-progress-bar {
+    @apply h-full bg-yellow-400;
+  }
+
+  /* DragDrop */
+  .dragdrop-container {
+    @apply flex gap-6 justify-around my-4;
+  }
+  .drag-column,
+  .drop-column {
+    @apply w-1/2 p-4 border-2 border-gray-300 rounded;
+  }
+  .draggable-item {
+    @apply bg-gray-800 text-white p-2 rounded my-2 cursor-move;
+  }
+  .drop-target {
+    @apply bg-white border-2 border-dashed border-gray-400 p-2 my-2 flex items-center justify-center;
+  }
+
+  /* Buttons */
+  .answer-button {
+    @apply py-4 px-6 border border-black text-center font-medium text-lg w-full;
+  }
+  .answer-button:hover {
+    @apply bg-gray-800 text-white;
+  }
+  .next-button {
+    @apply mt-3 bg-green-600 text-white py-2 px-4 rounded;
+  }
+  .next-button:hover {
+    @apply bg-green-700;
+  }
+
+  /* Erklärung-Box */
+  .explanation-box {
+    @apply mt-4 p-3 bg-gray-800 rounded-lg;
+  }
+  .explanation-text {
+    @apply mt-1;
+  }
+
+  /* Joker-Leiste */
+  .joker-row {
+    @apply absolute bottom-8 left-6 flex gap-4;
+  }
+  .joker-btn {
+    @apply w-14 h-14 rounded-full flex items-center justify-center;
+  }
+  .joker-btn:hover {
+    @apply bg-gray-800 text-white;
+  }
+
+  /* XP- und Coin-Boxen (Header-Stats) */
+  .xp-box,
+  .coin-box {
+    @apply py-2 px-4 bg-blue-500 text-white rounded-full flex items-center;
+  }
+  .coin-box {
+    @apply bg-yellow-400 text-black;
+  }
+
+  /* ---------------------- ProfileScreen ---------------------- */
+  .profile-screen-container {
+    @apply max-w-[1200px] mx-auto my-5 border-3 bg-black text-white p-5 min-h-[600px] flex flex-col relative;
+  }
+  .profile-topbar {
+    @apply flex items-center justify-between bg-[#111] p-2;
+  }
+  .topbar-logo {
+    @apply w-20 h-auto;
+  }
+  .topbar-title {
+    @apply text-2xl font-bold text-white text-center flex-grow;
+  }
+  .topbar-settings-btn {
+    @apply bg-transparent border-0 cursor-pointer;
+  }
+  .topbar-settings-btn img {
+    @apply w-9 h-9;
+  }
+  .profile-content-area {
+    @apply flex flex-col;
+  }
+  .profile-header-row {
+    @apply flex items-center justify-between gap-5;
+  }
+  .profile-ring-container {
+    @apply relative w-48 h-48;
+  }
+  .profile-ring-svg {
+    @apply w-48 h-48;
+  }
+  .profile-avatar-circle {
+    @apply absolute top-10 left-10 w-30 h-30 rounded-full bg-cover bg-center border-2;
+  }
+  .profile-center-info {
+    @apply flex flex-col gap-2 flex-1;
+  }
+  .profile-username {
+    @apply text-xl font-bold text-white;
+  }
+  .profile-medals-row {
+    @apply flex gap-2 items-center;
+  }
+  .profile-medal-item {
+    @apply flex items-center gap-1;
+  }
+  .profile-medal-img {
+    @apply w-6 h-6 object-contain;
+  }
+  .profile-medal-count {
+    @apply text-base text-white;
+  }
+  .profile-university {
+    @apply text-base text-grayLight m-0;
+  }
+  .profile-xp,
+  .profile-coins {
+    @apply text-base m-0;
+  }
+  .profile-level-row {
+    @apply flex items-center gap-2;
+  }
+  .profile-level-icon {
+    @apply w-12 h-12 object-contain;
+  }
+  .profile-level-name {
+    @apply text-base font-bold m-0 text-white;
+  }
+  .profile-league-icon {
+    @apply w-20 h-20 object-contain;
+  }
+  .profile-back-button {
+    @apply bg-green-500 text-white border-0 rounded p-2 cursor-pointer;
+  }
+  .profile-back-button:hover {
+    @apply bg-green-700;
+  }
+
+  /* ---------------------- LoginScreen ---------------------- */
+  .auth-container {
+    @apply max-w-[500px] mx-auto my-10 p-5 border border-grayLight rounded bg-white text-black;
+  }
+  .auth-title {
+    @apply mb-2 text-center text-black;
+  }
+  .auth-info {
+    @apply text-sm mb-5 text-center text-black;
+  }
+  .auth-boxes {
+    @apply flex justify-around gap-5;
+  }
+  .auth-box {
+    @apply flex-1 min-w-[250px] border border-grayLight p-4 rounded bg-white text-black;
+  }
+  .btn-register,
+  .btn-login {
+    @apply w-full p-3 bg-blue-400 text-white font-semibold border-0 rounded cursor-pointer;
+  }
+  .btn-register:hover,
+  .btn-login:hover {
+    @apply bg-blue-600;
+  }
+  .social-buttons {
+    @apply flex gap-2 mt-2;
+  }
+  .social-button {
+    @apply flex-1 flex items-center justify-center p-2 rounded cursor-pointer font-medium text-sm;
+  }
+  .google-button {
+    @apply bg-white text-gray-800 border border-grayLight;
+  }
+  .google-button:hover {
+    @apply bg-gray-100;
+  }
+  .facebook-button {
+    @apply bg-[#4267b2] text-white;
+  }
+  .facebook-button:hover {
+    @apply bg-[#365494];
+  }
+  .social-icon {
+    @apply w-5 h-5;
+  }
+  .auth-message {
+    @apply mt-4 text-center text-red-500 min-h-[20px];
+  }
+  .auth-switch {
+    @apply text-center mt-2;
+  }
+  .btn-switch-mode {
+    @apply bg-transparent text-gray-800 border border-grayLight p-2 rounded cursor-pointer;
+  }
+  .btn-switch-mode:hover {
+    @apply bg-gray-100;
+  }
+
+  /* ---------------------- LeaderboardOverlay ---------------------- */
+  .leaderboard-overlay {
+    @apply fixed top-0 left-0 w-full h-full bg-black bg-opacity-70 z-50 flex items-center justify-center p-4;
+  }
+  .leaderboard-container {
+    @apply w-full max-w-[1200px] h-[90vh] bg-white flex rounded overflow-hidden;
+  }
+  .leaderboard-sidebar {
+    @apply w-52 bg-white p-4 border-r border-grayLight;
+  }
+  .leaderboard-sidebar h3 {
+    @apply text-xl mb-4;
+  }
+  .leaderboard-sidebar ul {
+    @apply list-none p-0 m-0;
+  }
+  .leaderboard-sidebar ul li {
+    @apply p-2 mb-2 cursor-pointer rounded;
+  }
+  .leaderboard-sidebar ul li:hover,
+  .leaderboard-sidebar ul li.active {
+    @apply bg-gray-100;
+  }
+  .leaderboard-main {
+    @apply flex-1 bg-white p-4 relative overflow-y-auto rounded-r;
+  }
+  .leaderboard-close {
+    @apply absolute top-2 right-2 bg-transparent border-0 text-2xl cursor-pointer;
+  }
+
+  /* ---------------------- EndScreen ---------------------- */
+  .end-screen-container {
+    @apply flex flex-col w-full;
+  }
+  .end-screen-content-row {
+    @apply flex flex-1;
+  }
+  .end-screen-left-panel {
+    @apply bg-black text-white p-5 flex flex-col items-center relative;
+  }
+  .end-screen-name-league-container {
+    @apply relative w-full text-center mb-2;
+  }
+  .end-screen-username {
+    @apply text-3xl m-0;
+  }
+  .end-screen-league-top {
+    @apply absolute top-0 right-2 w-16 h-16 object-contain;
+  }
+  .end-screen-university {
+    @apply text-gray-400 text-sm mb-3 text-center;
+  }
+  .end-screen-row {
+    @apply flex items-center justify-center gap-5 mb-5;
+  }
+  .end-screen-avatar {
+    @apply w-36 h-36 rounded-full object-cover;
+  }
+  .end-screen-level-icon-sm {
+    @apply w-20 h-20 object-contain;
+  }
+  .end-screen-level-circle {
+    @apply w-44 h-44 my-3;
+  }
+  .end-screen-level-circle-svg {
+    @apply w-full h-full;
+  }
+  .end-screen-medals-row {
+    @apply flex gap-5 justify-center mb-5;
+  }
+  .end-screen-medal-cell {
+    @apply text-center;
+  }
+  .end-screen-medal-img {
+    @apply w-8 h-8;
+  }
+  .end-screen-medal-value {
+    @apply mt-1 text-lg;
+  }
+  .end-screen-scale-img {
+    @apply w-24 mb-5;
+  }
+  .end-screen-questions-answered {
+    @apply text-base mt-2 text-black;
+  }
+  .end-screen-halfcircle-container {
+    @apply w-[300px] h-[150px] mx-auto mb-2;
+  }
+  .end-screen-halfcircle-svg {
+    @apply w-full h-full;
+  }
+  .end-screen-round-progress {
+    @apply text-base mt-1;
+  }
+  .end-screen-medal-text {
+    @apply mb-2 text-center;
+  }
+  .end-screen-repeat-button {
+    @apply mt-auto mb-5 p-3 text-xl bg-green-500 text-white rounded cursor-pointer;
+  }
+  .end-screen-repeat-button:hover {
+    @apply bg-green-700;
+  }
+
+  /* Stile für spezielle Komponenten */
+  .joker-btn[disabled] {
+    @apply opacity-50 cursor-not-allowed;
+  }
+}
+
+/* =================== Zusätzliche Utility-Erweiterungen =================== */
+@layer utilities {
+  /* Eigene Utility-Klassen hier */
+}
+
+/* Reset für bessere Iframe-Kompatibilität */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+/* Iframe spezifische Styles */
+:root {
+  --quiz-bg-color: #ffffff;
+  --quiz-text-color: #000000;
+  --quiz-accent-color: #FFCC00;
+  --quiz-button-color: #000000;
+  --quiz-button-text: #ffffff;
+}
+
+/* Erhöhe die Tap Target Size für bessere Mobilnutzung */
+button, 
+[role="button"],
+input,
+select,
+textarea {
+  font-family: inherit;
+  touch-action: manipulation;
+}
+
+/* Stelle sicher, dass das Quiz ordentlich in iFrames angezeigt wird */
+#root {
+  max-width: 100vw;
+  overflow-x: hidden;
+  background-color: var(--quiz-bg-color);
+  color: var(--quiz-text-color);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .content-row {
+    @apply flex-col;
+  }
+  
+  .question-panel, .answer-panel {
+    @apply w-full;
+  }
+  
+  .joker-row {
+    @apply static mt-4 justify-center;
+  }
+}
+
+/* Behalte bestehende Stile, falls nötig */

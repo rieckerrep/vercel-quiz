@@ -1,0 +1,339 @@
+/* global.css (Auszug) */
+
+/* Container rund ums Login/Registrieren */
+.auth-container {
+  max-width: 500px;
+  margin: 40px auto;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background-color: #fdfdfd;
+  color: #000;
+}
+
+.auth-title {
+  margin-bottom: 10px;
+  color: #000;
+  text-align: center;
+}
+
+.auth-info {
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+  text-align: center;
+  color: #000;
+}
+
+.auth-boxes {
+  display: flex;
+  justify-content: space-around;
+  gap: 20px;
+}
+
+/* Jede Box (Login oder Register) */
+.auth-box {
+  flex: 1;
+  min-width: 250px;
+  border: 1px solid #ddd;
+  padding: 15px;
+  border-radius: 8px;
+  background-color: #fff;
+  color: #000;
+}
+
+/* Felder / Buttons */
+.auth-box input,
+.auth-box select {
+  display: block;
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 8px;
+  font-size: 1rem;
+}
+
+.btn-register,
+.btn-login {
+  display: inline-block;
+  width: 100%;
+  padding: 10px;
+  background-color: #4c9aff; /* nettes hellblau */
+  color: #fff;
+  text-align: center;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn-register:hover,
+.btn-login:hover {
+  background-color: #3377cc;
+}
+
+/* Social Buttons in einer Zeile */
+.social-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* Social Button shared style */
+.social-button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+  padding: 8px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+/* Google => weißer Hintergrund, dunkler Text */
+.google-button {
+  background-color: #fff;
+  color: #444;
+  border: 1px solid #ddd;
+}
+.google-button:hover {
+  background-color: #f8f8f8;
+}
+
+/* Facebook => FB-Blau + weißer Text */
+.facebook-button {
+  background-color: #4267b2;
+  color: #fff;
+}
+.facebook-button:hover {
+  background-color: #365494;
+}
+
+/* Icon vor dem Text */
+.social-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.auth-message {
+  margin-top: 15px;
+  color: red;
+  min-height: 20px; /* reservierter Platz */
+  text-align: center;
+}
+
+.auth-switch {
+  text-align: center;
+  margin-top: 10px;
+}
+
+.btn-switch-mode {
+  background-color: transparent;
+  color: #333;
+  border: 1px solid #ccc;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn-switch-mode:hover {
+  background-color: #eee;
+}
+
+/* LoginScreen.css - Optimiert für das neue Design */
+
+/* Basis-Container-Styles */
+.login-screen-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #151923 0%, #1a202c 100%);
+  padding: 1rem;
+}
+
+/* Formular-Container */
+.login-form-container {
+  width: 100%;
+  max-width: 28rem;
+  background-color: #202431;
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  padding: 2rem;
+  border: 1px solid #374151;
+}
+
+/* Logo-Animation */
+.login-logo {
+  width: 6rem;
+  height: 6rem;
+  margin: 0 auto 1rem;
+  display: block;
+}
+
+/* Überschriften */
+.login-title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: #ffffff;
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.login-subtitle {
+  color: #9ca3af;
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+/* Formular-Elemente */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #d1d5db;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background-color: #1a202c;
+  border: 1px solid #374151;
+  border-radius: 0.5rem;
+  color: #ffffff;
+  transition: all 0.2s;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+/* Passwort-Container */
+.password-container {
+  position: relative;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.password-toggle:hover {
+  color: #ffffff;
+}
+
+/* Fehlermeldungen */
+.error-message {
+  padding: 0.75rem;
+  background-color: rgba(220, 38, 38, 0.1);
+  border: 1px solid #ef4444;
+  border-radius: 0.5rem;
+  color: #fca5a5;
+  font-size: 0.875rem;
+}
+
+/* Buttons */
+.login-button {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #3b82f6;
+  color: #ffffff;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.login-button:hover {
+  background-color: #2563eb;
+}
+
+.login-button:disabled {
+  background-color: #4b5563;
+  cursor: not-allowed;
+}
+
+/* Loading-Spinner */
+.loading-spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid #ffffff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Mode-Switch */
+.mode-switch {
+  margin-top: 1.5rem;
+  text-align: center;
+}
+
+.mode-switch-button {
+  color: #9ca3af;
+  font-size: 0.875rem;
+  transition: color 0.2s;
+}
+
+.mode-switch-button:hover {
+  color: #ffffff;
+}
+
+/* Responsive Anpassungen */
+@media (max-width: 640px) {
+  .login-form-container {
+    padding: 1.5rem;
+  }
+
+  .login-title {
+    font-size: 1.5rem;
+  }
+
+  .login-logo {
+    width: 5rem;
+    height: 5rem;
+  }
+}
+
+/* Animationen */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
