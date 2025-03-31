@@ -1,10 +1,5 @@
 // useUserStats.ts
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-  UseMutationOptions,
-} from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
 
 export interface UserStats {
@@ -60,8 +55,6 @@ async function updateUserStatsDB(
 }
 
 export function useUserStats(userId: string) {
-  const queryClient = useQueryClient();
-
   const { data, isLoading, error, refetch } = useQuery<UserStats | null, Error>(
     {
       queryKey: ["userStats", userId],
@@ -73,9 +66,6 @@ export function useUserStats(userId: string) {
 
   const mutation = useMutation<UserStats | null, Error, Partial<UserStats>>({
     mutationFn: (updates) => updateUserStatsDB(userId, updates),
-    onSuccess: (newStats) => {
-      queryClient.setQueryData(["userStats", userId], newStats);
-    },
   });
 
   return {

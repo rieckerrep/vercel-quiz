@@ -1,8 +1,7 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { supabase } from "./supabaseClient";
 
 interface QuizHeadlineProps {
-  user: any;
   userStats: {
     total_xp: number;
     total_coins: number;
@@ -19,7 +18,6 @@ interface QuizHeadlineProps {
 }
 
 export default function QuizHeadline({
-  user,
   userStats,
   profile,
   onOpenProfile,

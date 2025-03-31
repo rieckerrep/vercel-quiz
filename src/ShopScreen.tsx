@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
-import { supabase } from "./supabaseClient";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import "./ShopScreen.css";
+import { supabase } from "./supabaseClient";
 
 interface ShopAvatar {
   id: number;
@@ -26,7 +26,6 @@ interface ShopScreenProps {
   onBack: () => void;
   userId: string;
   userStats: UserStats;
-  profile: Profile;
   updateUserStats: (updates: { total_xp: number; total_coins: number }) => void;
   updateActiveAvatar: (avatarUrl: string) => void;
 }
@@ -35,7 +34,6 @@ export function ShopScreen({
   onBack,
   userId,
   userStats,
-  profile,
   updateUserStats,
   updateActiveAvatar,
 }: ShopScreenProps) {
@@ -272,6 +270,18 @@ export function ShopScreen({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
     >
+      {notification && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`absolute top-4 right-4 p-3 rounded-lg z-50 ${
+            notification.type === "success" ? "bg-green-600" : "bg-red-600"
+          } text-white`}
+        >
+          {notification.message}
+        </motion.div>
+      )}
+      
       <div className="flex flex-col h-full w-full">
         <div className="bg-[#10131c] text-white p-4 flex justify-between items-center shadow-md w-full">
           <button

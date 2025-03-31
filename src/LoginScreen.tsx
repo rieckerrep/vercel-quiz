@@ -11,16 +11,15 @@ interface LoginScreenProps {
 export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [message, setMessage] = useState<string>("");
+  const [universities, setUniversities] = useState<string[]>([]);
+  const [selectedUniversity, setSelectedUniversity] = useState<string>("");
 
   // Felder fürs Registrieren
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [university, setUniversity] = useState("");
-
-  // Liste von Unis
-  const [universities, setUniversities] = useState<string[]>([]);
-  const [message, setMessage] = useState("");
 
   // Audio
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -36,6 +35,9 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         console.error("Fehler beim Laden der Unis:", error.message);
       } else if (data) {
         setUniversities(data.map((u: any) => u.name));
+        if (data.length > 0) {
+          setSelectedUniversity(data[0].name);
+        }
       }
     };
     fetchUnis();
@@ -57,7 +59,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!username || !email || !password || !university) {
+    if (!username || !email || !password || !selectedUniversity) {
       setError("❗ Bitte alle Felder ausfüllen!");
       return;
     }
@@ -92,7 +94,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         {
           id: userId,
           username,
-          university,
+          university: selectedUniversity,
           created_at: new Date(),
         },
       ]);
@@ -204,23 +206,47 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
         <form onSubmit={isRegisterMode ? handleRegister : handleLogin} className="space-y-6">
           {isRegisterMode && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Benutzername
-              </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-3 bg-[#1a202c] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-                placeholder="Wähle einen Benutzernamen"
-                required
-              />
-            </motion.div>
+            <>
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Benutzername
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full px-4 py-3 bg-[#1a202c] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
+                  placeholder="Wähle einen Benutzernamen"
+                  required
+                />
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Universität
+                </label>
+                <select
+                  value={selectedUniversity}
+                  onChange={(e) => setSelectedUniversity(e.target.value)}
+                  className="w-full px-4 py-3 bg-[#1a202c] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
+                  required
+                >
+                  {universities.map((uni, index) => (
+                    <option key={index} value={uni}>
+                      {uni}
+                    </option>
+                  ))}
+                </select>
+              </motion.div>
+            </>
           )}
 
           <div>
@@ -243,7 +269,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             </label>
             <div className="relative">
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-3 bg-[#1a202c] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
@@ -252,9 +278,10 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               />
               <button
                 type="button"
+                onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition duration-200"
               >
-                👁️‍🗨️
+                {showPassword ? "👁️‍🗨️" : "👁️‍🗨️"}
               </button>
             </div>
           </div>
@@ -266,6 +293,16 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               className="p-3 bg-red-900/20 border border-red-500 rounded-lg text-red-400 text-sm"
             >
               {error}
+            </motion.div>
+          )}
+
+          {message && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="p-3 bg-green-900/20 border border-green-500 rounded-lg text-green-400 text-sm"
+            >
+              {message}
             </motion.div>
           )}
 
@@ -328,7 +365,6 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               setUsername("");
               setEmail("");
               setPassword("");
-              setUniversity("");
             }}
             className="text-sm text-gray-400 hover:text-white transition duration-200"
           >
