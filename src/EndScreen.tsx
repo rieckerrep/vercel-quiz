@@ -9,6 +9,7 @@ export interface EndScreenProps {
   possibleRoundXp?: number;
   roundCoins: number;
   medalType: string;
+  showLevelUpAnimation: boolean;
   onRestart: () => void;
   onOpenLeaderboard: () => void;
   onOpenShop: () => void;
@@ -48,6 +49,7 @@ export default function EndScreen({
   possibleRoundXp = 0,
   roundCoins,
   medalType,
+  showLevelUpAnimation,
   onRestart,
   onOpenLeaderboard,
   onOpenShop,
@@ -394,7 +396,7 @@ export default function EndScreen({
       transition={{ duration: 0.5 }}
     >
       {/* Level-Up Animation */}
-      {isLevelUp && <LevelUpAnimation />}
+      {showLevelUpAnimation && <LevelUpAnimation />}
 
       <div className="flex flex-col md:flex-row min-h-[600px]">
         {/* Linke Spalte (dunkler Hintergrund) */}

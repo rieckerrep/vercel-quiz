@@ -1,18 +1,6 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
-
-interface Question {
-  id: number;
-  Frage: string;
-  type: string;
-  "Richtige Antwort"?: string;
-  Begründung: string | null;
-  "Antwort A"?: string;
-  "Antwort B"?: string;
-  "Antwort C"?: string;
-  "Antwort D"?: string;
-  chapter_id: number;
-}
+import { Question } from "./store/useQuizStore";
 
 interface QuestionComponentProps {
   question: Question;

@@ -2,12 +2,7 @@
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
-
-export interface Question {
-  id: number;
-  Frage: string;
-  // weitere Eigenschaften, falls benötigt
-}
+import { useQuizStore, Question } from './store/useQuizStore';
 
 interface QuestionNavigationProps {
   questions: Question[];
@@ -38,21 +33,14 @@ const QuestionNavigation: React.FC<QuestionNavigationProps> = ({
   currentIndex,
   onSelectQuestion,
 }) => {
-  const {
-    data: answeredIds,
-    isLoading,
-    error,
-  } = useAnsweredQuestions(userId);
-
-  if (isLoading) return <div className="text-center p-2">Lade Navigation...</div>;
-  if (error) return <div className="text-center p-2 text-red-500">Fehler: {error.message}</div>;
+  const { answeredQuestions } = useQuizStore();
 
   return (
     <div className="w-full overflow-x-auto py-2 px-1 md:px-4">
       <div className="flex gap-2 md:gap-3 min-w-min">
         {questions.map((q, idx) => {
           const active = idx === currentIndex;
-          const answered = answeredIds?.includes(q.id) ?? false;
+          const answered = answeredQuestions.includes(q.id);
           return (
             <button
               key={q.id}

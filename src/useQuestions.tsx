@@ -1,16 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "./supabaseClient";
-
-// Frage-Typ an deine Struktur angepasst
-export interface Question {
-  id: number;
-  type: string;
-  Frage: string;
-  Begründung: string | null;
-  ["Richtige Antwort"]?: string;
-  chapter_id: number;
-  [key: string]: any; // für dynamische Felder wie bei "cases" oder "lueckentext"
-}
+import { Question } from "./store/useQuizStore";
 
 // Hook zum Laden der Fragen eines Kapitels
 export function useQuestions(chapterId: number) {
@@ -24,11 +14,39 @@ export function useQuestions(chapterId: number) {
 
       if (error) throw new Error(error.message);
       
-      // Konvertiere undefined zu null für das Begründung-Feld
-      return (data || []).map(question => ({
-        ...question,
-        Begründung: question.Begründung || null
-      })) as Question[];
+      // Transformiere die Daten in das erwartete Format
+      const validQuestions: Question[] = (data || []).map(question => ({
+        id: question.id,
+        type: question.type,
+        Frage: question.Frage,
+        Begründung: question.Begründung || null,
+        "Richtige Antwort": question["Richtige Antwort"],
+        chapter_id: question.chapter_id,
+        course_id: question.course_id || null,
+        "Antwort A": question["Antwort A"] || null,
+        "Antwort B": question["Antwort B"] || null,
+        "Antwort C": question["Antwort C"] || null,
+        "Antwort D": question["Antwort D"] || null,
+        sub_questions: question.sub_questions?.map(sq => ({
+          id: sq.id,
+          type: sq.type,
+          Frage: sq.Frage,
+          Begründung: sq.Begründung || null,
+          "Richtige Antwort": sq["Richtige Antwort"],
+          chapter_id: sq.chapter_id,
+          course_id: sq.course_id || null,
+          "Antwort A": sq["Antwort A"] || null,
+          "Antwort B": sq["Antwort B"] || null,
+          "Antwort C": sq["Antwort C"] || null,
+          "Antwort D": sq["Antwort D"] || null
+        }))
+      }));
+
+      if (validQuestions.length === 0) {
+        throw new Error('Keine gültigen Fragen gefunden');
+      }
+
+      return validQuestions;
     },
     staleTime: 60 * 1000, // 1 Minute zwischencachen
   });

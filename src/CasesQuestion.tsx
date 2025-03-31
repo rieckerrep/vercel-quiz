@@ -2,17 +2,9 @@ import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import { motion } from "framer-motion";
 import { Database } from "./types/supabase";
+import { Question } from "./store/useQuizStore";
 
 type CasesSubquestion = Database['public']['Tables']['cases_subquestions']['Row'];
-
-// Hauptfrage-Interface
-interface Question {
-  id: number;
-  type: string;
-  Frage: string;
-  Begründung: string | null;
-  chapter_id: number;
-}
 
 // Das Objekt, das wir an onComplete schicken
 export interface CasesQuestionResult {

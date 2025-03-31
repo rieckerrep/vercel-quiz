@@ -20,7 +20,7 @@ export default function OpenQuestion({
   onCompareAnswer,
   onSelfEvaluation,
   disabled = false,
-  displayInBlackArea = true, // Standardmäßig wird der Vergleichscontainer hier angezeigt
+  displayInBlackArea = true, // Standardmäßig wird der Vergleichscontainer im schwarzen Bereich angezeigt
 }: OpenQuestionProps) {
   const [userAnswer, setUserAnswer] = useState<string>("");
   const [isComparing, setIsComparing] = useState<boolean>(false);

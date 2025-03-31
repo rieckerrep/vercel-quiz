@@ -1,5 +1,5 @@
 // QuizContainer.tsx
-import { useEffect, useState, useCallback } from "react";
+import { useEffect } from "react";
 import { useQuestions } from "./useQuestions";
 import { supabase } from "./supabaseClient";
 import QuizHeadline from "./QuizHeadline";
@@ -11,49 +11,18 @@ import QuestionComponent from "./QuestionComponent";
 import OpenQuestion from "./OpenQuestion";
 import EndScreen from "./EndScreen";
 import QuestionNavigation from "./QuestionNavigation";
-import { useQuiz } from "./QuizContext";
+import { useQuizStore } from "./store/useQuizStore";
+import { useSoundStore } from "./store/useSoundStore";
 import { useQuizAwards } from "./useQuizAwards";
 import { useUserStats } from "./useUserStats";
 import RewardAnimation from "./RewardAnimation";
 import LueckentextQuestion from "./LueckentextQuestion";
 import { motion } from "framer-motion";
 import { Database } from "./types/supabase";
-
-// Sound-Effekte importieren
-import correctSoundFile from "./assets/sounds/correct.mp3";
-import wrongSoundFile from "./assets/sounds/wrong.mp3";
-
-// Sound-Effekte
-const correctSound = new Audio(correctSoundFile);
-const wrongSound = new Audio(wrongSoundFile);
-
-// Sound-Hilfsfunktion
-const playSound = async (sound: HTMLAudioElement) => {
-  try {
-    // Stoppe und setze alle Sounds zurück
-    [correctSound, wrongSound].forEach(s => {
-      s.pause();
-      s.currentTime = 0;
-    });
-    
-    // Spiele den gewünschten Sound
-    await sound.play();
-  } catch (error) {
-    console.log("Sound konnte nicht abgespielt werden:", error);
-  }
-};
+import { useUserStore } from "./store/useUserStore";
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
-
-interface Question {
-  id: number;
-  type: string;
-  Frage: string;
-  Begründung?: string;
-  "Richtige Antwort": string;
-  chapter_id: number;
-}
 
 interface QuizContainerProps {
   user: any; // Auth user type from Supabase
@@ -74,48 +43,81 @@ export function QuizContainer({
   onOpenSettings,
 }: QuizContainerProps) {
   const chapterId = 1;
-  const { data: questions, isLoading: questionsLoading } = useQuestions(chapterId);
-
-  const [showExplanation, setShowExplanation] = useState(false);
-  const [lastAnswerCorrect, setLastAnswerCorrect] = useState<boolean | null>(null);
-  const [userInputAnswer, setUserInputAnswer] = useState("");
-  const [isQuizEnd, setIsQuizEnd] = useState(false);
-  const [medalType, setMedalType] = useState("Keine");
-  const [selectedAnswer, setSelectedAnswer] = useState<string>("");
-  const [isAnswerSubmitted, setIsAnswerSubmitted] = useState(false);
-
-  const {
-    currentIndex,
-    setCurrentIndex,
-    roundXp,
-    setRoundXp,
-    roundCoins,
-    setRoundCoins,
-    possibleRoundXp,
-    setPossibleRoundXp,
-  } = useQuiz();
-
-  const [xpBoostUsed, setXpBoostUsed] = useState(false);
-  const [streakBoostUsed, setStreakBoostUsed] = useState(false);
-  const [fiftyFiftyUsed, setFiftyFiftyUsed] = useState(false);
-  const [hintUsed, setHintUsed] = useState(false);
-  
-  // Zustände für die Belohnungsanimation
-  const [showRewardAnimation, setShowRewardAnimation] = useState(false);
-  const [rewardXp, setRewardXp] = useState(0);
-  const [rewardCoins, setRewardCoins] = useState(0);
-  const [isAnimationPlaying, setIsAnimationPlaying] = useState(false);
-
-  const { awardQuestion: awardNormal, awardSubquestion } = useQuizAwards(
-    user.id
-  );
+  const { playCorrectSound, playWrongSound } = useSoundStore();
+  const { awardQuestion: awardNormal } = useQuizAwards(user.id);
   const { userStats: globalUserStats, updateUserStats } = useUserStats(user.id);
+  const { addXP, addCoins, incrementQuestionsAnswered, incrementCorrectAnswers, fetchUserStats } = useUserStore();
 
-  // currentQ muss vor der Verwendung deklariert werden
-  const currentQ = questions?.[currentIndex];
-  
-  // Stelle sicher, dass alle useEffect-Aufrufe immer vorhanden sind, 
-  // nicht nur abhängig vom Fragetyp
+  // Zustand Store
+  const {
+    questions,
+    currentQuestion,
+    currentQuestionIndex,
+    isAnswerSubmitted,
+    selectedAnswer,
+    showExplanation,
+    lastAnswerCorrect,
+    userInputAnswer,
+    isQuizEnd,
+    showNavigation,
+    showJokerPanel,
+    showLeaderboard,
+    progress,
+    roundXp,
+    roundCoins,
+    possibleRoundXp,
+    showRewardAnimation,
+    rewardXp,
+    rewardCoins,
+    isAnimationPlaying,
+    xpBoostUsed,
+    streakBoostUsed,
+    fiftyFiftyUsed,
+    hintUsed,
+    isLoading,
+    isQuestionsLoading,
+    questionsError,
+    fetchQuestions,
+    setCurrentQuestionIndex,
+    setProgress,
+    setShowExplanation,
+    setLastAnswerCorrect,
+    setUserInputAnswer,
+    setIsAnswerSubmitted,
+    setIsQuizEnd,
+    setRoundXp,
+    setRoundCoins,
+    setPossibleRoundXp,
+    setShowRewardAnimation,
+    setRewardXp,
+    setRewardCoins,
+    setIsAnimationPlaying,
+    setXpBoostUsed,
+    setStreakBoostUsed,
+    setFiftyFiftyUsed,
+    setHintUsed,
+    handleAnswer,
+    handleFinalAnswer,
+    nextQuestion,
+    previousQuestion,
+    toggleJokerPanel,
+    toggleLeaderboard,
+    handleTrueFalseAnswer,
+    handleSubquestionAnswered,
+    finalizeQuiz,
+    resetQuiz,
+    showLevelUpAnimation,
+    setShowLevelUpAnimation,
+  } = useQuizStore();
+
+  // Lade Fragen beim ersten Rendern
+  useEffect(() => {
+    if (chapterId) {
+      fetchQuestions(chapterId);
+    }
+  }, [chapterId, fetchQuestions]);
+
+  // Berechne mögliche XP
   useEffect(() => {
     async function computeXp() {
       if (!questions || questions.length === 0) return;
@@ -136,295 +138,22 @@ export function QuizContainer({
     computeXp();
   }, [questions, setPossibleRoundXp]);
 
+  // Finalisiere Quiz wenn alle Fragen beantwortet
   useEffect(() => {
-    if (!isQuizEnd && questions && currentIndex >= questions.length) {
+    if (!isQuizEnd && questions && currentQuestionIndex >= questions.length) {
       finalizeQuiz();
     }
-  }, [isQuizEnd, currentIndex, questions]);
+  }, [isQuizEnd, currentQuestionIndex, questions, finalizeQuiz]);
 
-  // Extra leerer useEffect, um die Hook-Reihenfolge zu stabilisieren
+  // Aktualisiere die Benutzerdaten, wenn sich XP oder Münzen ändern
   useEffect(() => {
-    // Dieser Hook ist immer vorhanden, macht aber nichts
-  }, []);
-  
-  // Extrahiere die Logik aus dem switch-case in Funktionen
-  const handleTrueFalseAnswer = useCallback(async (opt: boolean) => {
-    if (!currentQ || isAnimationPlaying) return;
-    
-    const correctAnswer = currentQ["Richtige Antwort"] || "";
-    const isC = (correctAnswer.trim().toLowerCase() === "richtig") === opt;
-    
-    // Sound abspielen
-    if (isC) {
-      await playSound(correctSound);
-    } else {
-      await playSound(wrongSound);
+    if (user?.id) {
+      fetchUserStats(user.id);
     }
-    
-    const didAward = await awardNormal(currentQ.id, isC);
-    if (didAward && globalUserStats) {
-      // Belohnungen berechnen
-      const rewardXp = isC ? 10 : 0;
-      const rewardCoins = isC ? 10 : -5; // 10 Münzen für richtig, -5 für falsch
-      setRoundXp(prev => prev + rewardXp);
-      setRoundCoins(prev => prev + rewardCoins);
-      
-      // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
-      setIsAnimationPlaying(true);
-      
-      // Belohnungsanimation auslösen
-      setRewardXp(rewardXp);
-      setRewardCoins(rewardCoins);
-      setShowRewardAnimation(true);
-      setLastAnswerCorrect(isC);
-      
-      // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
-      setTimeout(() => {
-        setShowRewardAnimation(false);
-        setIsAnimationPlaying(false);
-      }, 2000);
-      
-      // Statistiken aktualisieren
-      if (user) {
-        const { data: existingStats } = await supabase
-          .from('user_stats')
-          .select('*')
-          .eq('user_id', user.id)
-          .single();
+  }, [user?.id, roundXp, roundCoins, fetchUserStats]);
 
-        if (existingStats) {
-          const { error: updateError } = await supabase
-            .from('user_stats')
-            .update({
-              total_xp: (existingStats.total_xp || 0) + rewardXp,
-              total_coins: Math.max(0, (existingStats.total_coins || 0) + rewardCoins), // Verhindert negative Münzen
-              questions_answered: (existingStats.questions_answered || 0) + 1,
-              correct_answers: existingStats.correct_answers + (isC ? 1 : 0),
-              last_played: new Date().toISOString()
-            })
-            .eq('user_id', user.id);
-
-          if (updateError) {
-            console.error('Fehler beim Aktualisieren der Statistiken:', updateError);
-          }
-        }
-      }
-    } else {
-      // Auch wenn keine Belohnung vergeben wurde (z.B. weil die Frage bereits beantwortet wurde),
-      // setzen wir trotzdem den Status basierend auf der Korrektheit
-      setLastAnswerCorrect(isC);
-    }
-    setShowExplanation(true);
-  }, [currentQ, awardNormal, globalUserStats, setRoundXp, setRoundCoins, setRewardXp, setRewardCoins, setShowRewardAnimation, setLastAnswerCorrect, updateUserStats, setShowExplanation, isAnimationPlaying, user]);
-
-  function finalizeQuiz() {
-    const ratio = possibleRoundXp > 0 ? roundXp / possibleRoundXp : 0;
-    let newMedal = "Keine";
-    if (ratio >= 1.0) newMedal = "Gold";
-    else if (ratio >= 0.75) newMedal = "Silber";
-    else if (ratio >= 0.5) newMedal = "Bronze";
-    setMedalType(newMedal);
-    setIsQuizEnd(true);
-  }
-
-  async function handleSubquestionAnswered(subId: number, isCorrect: boolean) {
-    if (!questions) return;
-    const didAward = await awardSubquestion(
-      subId,
-      isCorrect,
-      questions[currentIndex].id
-    );
-    if (didAward && globalUserStats) {
-      const rewardXp = isCorrect ? 10 : 0;
-      const rewardCoins = isCorrect ? 10 : -5; // 10 Münzen für richtig, -5 für falsch
-      setRoundXp((prev) => prev + rewardXp);
-      setRoundCoins((prev) => Math.max(0, prev + rewardCoins));
-      
-      // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
-      setIsAnimationPlaying(true);
-      
-      // Belohnungsanimation auslösen
-      setRewardXp(rewardXp);
-      setRewardCoins(rewardCoins);
-      setShowRewardAnimation(true);
-      setLastAnswerCorrect(isCorrect);
-      
-      // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
-      setTimeout(() => {
-        setShowRewardAnimation(false);
-        setIsAnimationPlaying(false);
-      }, 2000);
-      
-      // Statistiken aktualisieren
-      if (user) {
-        const { data: existingStats } = await supabase
-          .from('user_stats')
-          .select('*')
-          .eq('user_id', user.id)
-          .single();
-
-        if (existingStats) {
-          const { error: updateError } = await supabase
-            .from('user_stats')
-            .update({
-              total_xp: (existingStats.total_xp || 0) + rewardXp,
-              total_coins: Math.max(0, (existingStats.total_coins || 0) + rewardCoins), // Verhindert negative Münzen
-              questions_answered: (existingStats.questions_answered || 0) + 1,
-              correct_answers: existingStats.correct_answers + (isCorrect ? 1 : 0),
-              last_played: new Date().toISOString()
-            })
-            .eq('user_id', user.id);
-
-          if (updateError) {
-            console.error('Fehler beim Aktualisieren der Statistiken:', updateError);
-          }
-        }
-      }
-    }
-  }
-
-  function handleNext() {
-    // Wenn eine Animation läuft, ignoriere den Klick
-    if (isAnimationPlaying) return;
-    
-    setShowExplanation(false);
-    setLastAnswerCorrect(null);
-    setUserInputAnswer("");
-    setCurrentIndex(currentIndex + 1);
-  }
-
-  const handleAnswer = async (isCorrect: boolean) => {
-    if (isAnimationPlaying) return;
-    
-    console.log("QuizContainer - Von DragDropQuestion erhaltener isCorrect-Wert:", isCorrect);
-    
-    setLastAnswerCorrect(isCorrect);
-    setShowExplanation(true);
-    
-    // Sound abspielen
-    if (isCorrect) {
-      await playSound(correctSound);
-    } else {
-      await playSound(wrongSound);
-    }
-    
-    if (!currentQ) return;
-    
-    const didAward = await awardNormal(currentQ.id, isCorrect);
-    if (didAward && globalUserStats) {
-      // Belohnungen berechnen
-      const rewardXp = isCorrect ? 10 : 0;
-      const rewardCoins = isCorrect ? 10 : -5; // 10 Münzen für richtig, -5 für falsch
-      setRoundXp(prev => prev + rewardXp);
-      setRoundCoins(prev => prev + rewardCoins);
-      
-      // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
-      setIsAnimationPlaying(true);
-      
-      // Belohnungsanimation auslösen
-      setRewardXp(rewardXp);
-      setRewardCoins(rewardCoins);
-      setShowRewardAnimation(true);
-      
-      // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
-      setTimeout(() => {
-        setShowRewardAnimation(false);
-        setIsAnimationPlaying(false);
-      }, 2000);
-      
-      // Statistiken aktualisieren
-      if (user) {
-        const { data: existingStats } = await supabase
-          .from('user_stats')
-          .select('*')
-          .eq('user_id', user.id)
-          .single();
-
-        if (existingStats) {
-          const { error: updateError } = await supabase
-            .from('user_stats')
-            .update({
-              total_xp: (existingStats.total_xp || 0) + rewardXp,
-              total_coins: Math.max(0, (existingStats.total_coins || 0) + rewardCoins), // Verhindert negative Münzen
-              questions_answered: (existingStats.questions_answered || 0) + 1,
-              correct_answers: existingStats.correct_answers + (isCorrect ? 1 : 0),
-              last_played: new Date().toISOString()
-            })
-            .eq('user_id', user.id);
-
-          if (updateError) {
-            console.error('Fehler beim Aktualisieren der Statistiken:', updateError);
-          }
-        }
-      }
-    }
-  };
-
-  const handleFinalAnswer = async (answer: string) => {
-    if (!currentQ || !questions) return;
-    const isCorrect = answer.toLowerCase() === currentQ.correct_answer.toLowerCase();
-    setSelectedAnswer(answer);
-    setShowExplanation(true);
-    setIsAnswerSubmitted(true);
-
-    // Sound abspielen
-    if (isCorrect) {
-      await playSound(correctSound);
-    } else {
-      await playSound(wrongSound);
-    }
-
-    // Belohnungen vergeben
-    const didAward = await awardNormal(currentQ.id, isCorrect);
-    if (didAward && globalUserStats) {
-      const rewardXp = isCorrect ? 10 : 0;
-      const rewardCoins = isCorrect ? 10 : -5; // 10 Münzen für richtig, -5 für falsch
-      setRoundXp((prev) => prev + rewardXp);
-      setRoundCoins((prev) => Math.max(0, prev + rewardCoins));
-      
-      // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
-      setIsAnimationPlaying(true);
-      
-      // Belohnungsanimation auslösen
-      setRewardXp(rewardXp);
-      setRewardCoins(rewardCoins);
-      setShowRewardAnimation(true);
-      
-      // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
-      setTimeout(() => {
-        setShowRewardAnimation(false);
-        setIsAnimationPlaying(false);
-      }, 2000);
-      
-      // Statistiken aktualisieren
-      if (user) {
-        const { data: existingStats } = await supabase
-          .from('user_stats')
-          .select('*')
-          .eq('user_id', user.id)
-          .single();
-
-        if (existingStats) {
-          const { error: updateError } = await supabase
-            .from('user_stats')
-            .update({
-              total_xp: (existingStats.total_xp || 0) + rewardXp,
-              total_coins: Math.max(0, (existingStats.total_coins || 0) + rewardCoins), // Verhindert negative Münzen
-              questions_answered: (existingStats.questions_answered || 0) + 1,
-              correct_answers: existingStats.correct_answers + (isCorrect ? 1 : 0),
-              last_played: new Date().toISOString()
-            })
-            .eq('user_id', user.id);
-
-          if (updateError) {
-            console.error('Fehler beim Aktualisieren der Statistiken:', updateError);
-          }
-        }
-      }
-    }
-  };
-
-  if (!user)
+  // Rendere Loading State
+  if (!user) {
     return (
       <div className="border border-gray-900 min-h-[600px] flex flex-col items-center justify-center bg-gray-50">
         <div className="w-24 h-24 mb-6 rounded-full bg-black flex items-center justify-center">
@@ -442,7 +171,9 @@ export function QuizContainer({
         </button>
       </div>
     );
-  if (questionsLoading)
+  }
+
+  if (isQuestionsLoading || isLoading) {
     return (
       <div className="border border-gray-900 min-h-[600px] flex items-center justify-center">
         <div className="flex flex-col items-center">
@@ -451,19 +182,34 @@ export function QuizContainer({
         </div>
       </div>
     );
-  if (!questions || questions.length === 0)
+  }
+
+  if (questionsError) {
+    return (
+      <div className="border border-gray-900 min-h-[600px] flex items-center justify-center text-xl text-red-500">
+        Fehler beim Laden der Fragen: {questionsError.message}
+      </div>
+    );
+  }
+
+  if (!questions || questions.length === 0) {
     return <div className="border border-gray-900 min-h-[600px] flex items-center justify-center text-xl">Keine Fragen verfügbar.</div>;
-  if (possibleRoundXp === 0)
+  }
+
+  if (possibleRoundXp === 0) {
     return <div className="border border-gray-900 min-h-[600px] flex items-center justify-center text-xl">Berechne mögliche XP...</div>;
-  if (isQuizEnd || currentIndex >= questions.length)
+  }
+
+  if (isQuizEnd || currentQuestionIndex >= questions.length) {
     return (
       <EndScreen
         roundXp={roundXp}
         roundCoins={roundCoins}
         possibleRoundXp={possibleRoundXp} 
-        medalType={medalType}
+        medalType={showRewardAnimation ? "Keine" : "Gold"}
+        showLevelUpAnimation={showLevelUpAnimation}
         onRestart={() => {
-          setCurrentIndex(0);
+          previousQuestion();
           setIsQuizEnd(false);
           setRoundXp(0);
           setRoundCoins(0);
@@ -471,34 +217,50 @@ export function QuizContainer({
           setStreakBoostUsed(false);
           setFiftyFiftyUsed(false);
           setHintUsed(false);
+          setShowLevelUpAnimation(false);
         }}
         onOpenLeaderboard={onOpenLeaderboard}
         onOpenShop={onOpenShop}
         onOpenProfile={onOpenProfile}
       />
     );
+  }
 
   let content: React.ReactNode = null;
-  if (!currentQ) {
+  if (!currentQuestion) {
     content = <div>Keine Frage verfügbar</div>;
   } else {
-    switch (currentQ.type) {
+    switch (currentQuestion.type) {
       case "true_false":
         content = (
           <div className="flex gap-2">
             <button
               onClick={async () => {
+                if (isAnimationPlaying) return;
                 await handleTrueFalseAnswer(true);
+                if (lastAnswerCorrect) {
+                  await playCorrectSound();
+                } else {
+                  await playWrongSound();
+                }
               }}
               className="answer-button flex-1 inline-flex items-center justify-center"
+              disabled={isAnimationPlaying}
             >
               Richtig
             </button>
             <button
               onClick={async () => {
+                if (isAnimationPlaying) return;
                 await handleTrueFalseAnswer(false);
+                if (lastAnswerCorrect) {
+                  await playCorrectSound();
+                } else {
+                  await playWrongSound();
+                }
               }}
               className="answer-button flex-1 inline-flex items-center justify-center"
+              disabled={isAnimationPlaying}
             >
               Falsch
             </button>
@@ -508,44 +270,16 @@ export function QuizContainer({
       case "question":
         content = (
           <QuestionComponent
-            question={{ ...currentQ, chapter_id: currentQ.chapter_id ?? 1 }}
+            question={{ ...currentQuestion, chapter_id: currentQuestion.chapter_id ?? 1 }}
             onAnswer={async (_selected: string, isCorrect: boolean) => {
               if (isAnimationPlaying) return;
               
-              console.log("QuizContainer - Von QuestionComponent erhaltener isCorrect-Wert:", isCorrect);
+              await handleAnswer(isCorrect);
               
-              setLastAnswerCorrect(isCorrect);
-              setShowExplanation(true);
-
-              // Sound abspielen
               if (isCorrect) {
-                await playSound(correctSound);
+                await playCorrectSound();
               } else {
-                await playSound(wrongSound);
-              }
-              
-              const didAward = await awardNormal(currentQ.id, isCorrect);
-              if (didAward && globalUserStats) {
-                setIsAnimationPlaying(true);
-                
-                const xpDelta = isCorrect ? 10 : 0;
-                const coinDelta = isCorrect ? 1 : -1;
-                setRoundXp((prev) => prev + xpDelta);
-                setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-                
-                setRewardXp(isCorrect ? xpDelta : 0);
-                setRewardCoins(isCorrect ? coinDelta : 0);
-                setShowRewardAnimation(true);
-                
-                setTimeout(() => {
-                  setShowRewardAnimation(false);
-                  setIsAnimationPlaying(false);
-                }, 2000);
-                
-                await updateUserStats({
-                  total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
-                  total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
-                });
+                await playWrongSound();
               }
             }}
           />
@@ -554,36 +288,52 @@ export function QuizContainer({
       case "multiple_choice":
         content = (
           <MultipleChoiceQuestion
-            questionId={currentQ.id}
-            onComplete={handleAnswer}
+            questionId={currentQuestion.id}
+            onComplete={async (isCorrect: boolean) => {
+              if (isAnimationPlaying) return;
+              await handleAnswer(isCorrect);
+              if (isCorrect) {
+                await playCorrectSound();
+              } else {
+                await playWrongSound();
+              }
+            }}
           />
         );
         break;
       case "drag_drop":
         content = (
           <DragDropQuestion
-            questionId={currentQ.id}
-            onComplete={handleAnswer}
+            questionId={currentQuestion.id}
+            onComplete={async (isCorrect: boolean) => {
+              if (isAnimationPlaying) return;
+              await handleAnswer(isCorrect);
+              if (isCorrect) {
+                await playCorrectSound();
+              } else {
+                await playWrongSound();
+              }
+            }}
           />
         );
         break;
       case "cases":
         content = (
           <CasesQuestion
-            question={currentQ}
-            onSubquestionAnswered={handleSubquestionAnswered}
+            question={currentQuestion}
+            onSubquestionAnswered={async (subId: number, isCorrect: boolean) => {
+              if (isAnimationPlaying) return;
+              await handleSubquestionAnswered(subId, isCorrect);
+              if (isCorrect) {
+                await playCorrectSound();
+              } else {
+                await playWrongSound();
+              }
+            }}
             onComplete={async (result: CasesQuestionResult) => {
-              await supabase.from("answered_questions").insert([
-                {
-                  user_id: user.id,
-                  question_id: currentQ.id,
-                  is_correct: result.overallCorrect,
-                  answered_at: new Date(),
-                },
-              ]);
-              setLastAnswerCorrect(result.overallCorrect);
-              setShowExplanation(false);
-              handleNext();
+              if (isAnimationPlaying) return;
+              await handleAnswer(result.overallCorrect);
+              nextQuestion();
             }}
           />
         );
@@ -592,63 +342,16 @@ export function QuizContainer({
         content = (
           <OpenQuestion
             questionText=""
-            correctAnswer={currentQ["Richtige Antwort"] || ""}
+            correctAnswer={currentQuestion["Richtige Antwort"] || ""}
             onCompareAnswer={(text) => {
-              setUserInputAnswer(text);
-              setShowExplanation(true);
+              if (isAnimationPlaying) return;
+              handleFinalAnswer(text, user.id);
             }}
             onSelfEvaluation={async (isCorrect) => {
               if (isAnimationPlaying) return;
-              
-              // Sound abspielen
-              if (isCorrect) {
-                await playSound(correctSound);
-              } else {
-                await playSound(wrongSound);
-              }
-
-              const didAward = await awardNormal(currentQ.id, isCorrect);
-              if (didAward && globalUserStats) {
-                // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
-                setIsAnimationPlaying(true);
-                
-                const xpDelta = isCorrect ? 10 : 0;
-                const coinDelta = isCorrect ? 1 : -1;
-                setRoundXp((prev) => prev + xpDelta);
-                setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-                
-                // Belohnungsanimation auslösen
-                if (isCorrect) {
-                  setRewardXp(xpDelta);
-                  setRewardCoins(coinDelta);
-                  setShowRewardAnimation(true);
-                  setLastAnswerCorrect(true);
-                  
-                  // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
-                  setTimeout(() => {
-                    setShowRewardAnimation(false);
-                    setIsAnimationPlaying(false);
-                  }, 2000);
-                } else {
-                  setLastAnswerCorrect(false);
-                  setShowRewardAnimation(true);
-                  setRewardXp(0);
-                  setRewardCoins(0);
-                  
-                  // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
-                  setTimeout(() => {
-                    setShowRewardAnimation(false);
-                    setIsAnimationPlaying(false);
-                  }, 2000);
-                }
-                
-                await updateUserStats({
-                  total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
-                  total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
-                });
-              }
+              await handleAnswer(isCorrect);
             }}
-            displayInBlackArea={false} // Wichtig: Nicht in OpenQuestion anzeigen
+            displayInBlackArea={false}
           />
         );
         break;
@@ -656,58 +359,15 @@ export function QuizContainer({
         content = (
             <LueckentextQuestion
               questionText=""
-              correctAnswer={currentQ["Richtige Antwort"] ?? ""}
-              hint={currentQ.Begründung}
+            correctAnswer={currentQuestion["Richtige Antwort"] ?? ""}
+            hint={currentQuestion.Begründung}
               onComplete={async (isCorrect) => {
                 if (isAnimationPlaying) return;
-                
-                console.log("LueckentextQuestion onComplete mit isCorrect:", isCorrect);
-                
-                // Sound abspielen
+              await handleAnswer(isCorrect);
                 if (isCorrect) {
-                  await playSound(correctSound);
+                await playCorrectSound();
                 } else {
-                  await playSound(wrongSound);
-                }
-
-                const didAward = await awardNormal(currentQ.id, isCorrect);
-                console.log("didAward Ergebnis:", didAward);
-                
-                // Status immer basierend auf dem tatsächlichen isCorrect-Wert setzen,
-                // unabhängig davon, ob die Frage bereits beantwortet wurde
-                setLastAnswerCorrect(isCorrect);
-                setShowExplanation(true);
-                
-                // Nur wenn didAward true ist (Frage war noch nicht beantwortet), zeigen wir Animation und berechnen XP
-                if (didAward && globalUserStats) {
-                  // Animation-Flag setzen, um mehrfache Auslösung zu verhindern
-                  setIsAnimationPlaying(true);
-                  
-                  setShowRewardAnimation(true);
-                  
-                  // XP und Coins basierend auf Korrektheit berechnen
-                  const xpDelta = isCorrect ? 10 : 0;
-                  const coinDelta = isCorrect ? 1 : -1;
-                  
-                  // Belohnungsanimation mit korrekten Werten anzeigen - 
-                  // Bei falschen Antworten nur 0 Punkte anzeigen, nicht negative Werte
-                  setRewardXp(isCorrect ? xpDelta : 0);
-                  setRewardCoins(isCorrect ? coinDelta : 0);
-                  
-                  // Animation nach 2 Sekunden ausblenden und Flag zurücksetzen
-                  setTimeout(() => {
-                    setShowRewardAnimation(false);
-                    setIsAnimationPlaying(false);
-                  }, 2000);
-                  
-                  // Statistiken aktualisieren - tatsächliche Werte werden berechnet
-                  setRoundXp((prev) => prev + xpDelta);
-                  setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-                  
-                  await updateUserStats({
-                    total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
-                    total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
-                  });
+                await playWrongSound();
                 }
               }}
             />
@@ -716,7 +376,7 @@ export function QuizContainer({
         default:
           content = (
             <div className="p-3 text-red-500">
-                Fragetyp "{currentQ.type}" wird nicht unterstützt.
+            Fragetyp "{currentQuestion.type}" wird nicht unterstützt.
             </div>
           );
       }
@@ -724,7 +384,7 @@ export function QuizContainer({
 
   // Berechne den Fortschritt für die Fortschrittsanzeige
   const progressPercentage = questions 
-    ? ((currentIndex + 1) / questions.length) * 100
+    ? ((currentQuestionIndex + 1) / questions.length) * 100
     : 0;
 
   return (
@@ -798,12 +458,21 @@ export function QuizContainer({
             <QuestionNavigation
               questions={questions}
               userId={user.id}
-              currentIndex={currentIndex}
+              currentIndex={currentQuestionIndex}
               onSelectQuestion={(idx: number) => {
-                setCurrentIndex(idx);
+                if (isAnimationPlaying) return;
+                
+                // Setze den aktuellen Index
+                setCurrentQuestionIndex(idx);
+                
+                // Setze den Status zurück
                 setShowExplanation(false);
                 setLastAnswerCorrect(null);
                 setUserInputAnswer("");
+                setIsAnswerSubmitted(false);
+                
+                // Aktualisiere den Fortschritt
+                setProgress((idx / questions.length) * 100);
               }}
             />
           </div>
@@ -815,7 +484,7 @@ export function QuizContainer({
               <div className="mb-6 md:mb-12">
                 <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:gap-4 mb-4 md:mb-6">
                   <div className="text-lg md:text-xl font-bold whitespace-nowrap">
-                    Frage {currentIndex + 1} von {questions?.length || 8}
+                    Frage {currentQuestionIndex + 1} von {questions?.length || 8}
                   </div>
                   
                   {/* Fortschrittsbalken */}
@@ -831,11 +500,11 @@ export function QuizContainer({
                 </div>
                 
                 <div className="text-xl md:text-2xl font-bold mt-4 md:mt-8 leading-relaxed">
-                  {currentQ?.Frage}
+                  {currentQuestion?.Frage}
                 </div>
                 
                 {/* Erklärungscontainer für reguläre Fragen */}
-                {showExplanation && currentQ && currentQ.type !== "open_question" && (
+                {showExplanation && currentQuestion && currentQuestion.type !== "open_question" && (
                   <div className="mt-4 md:mt-8 p-3 md:p-5 bg-gray-800 rounded-md border border-yellow-400">
                     <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-3">
                       {lastAnswerCorrect === true ? (
@@ -858,12 +527,12 @@ export function QuizContainer({
                     
                     <div className="text-white text-sm md:text-base">
                       <p className="mb-2 md:mb-3">
-                        <span className="font-semibold">Richtige Antwort:</span> {currentQ["Richtige Antwort"]}
+                        <span className="font-semibold">Richtige Antwort:</span> {currentQuestion["Richtige Antwort"]}
                       </p>
-                      {currentQ.Begründung && (
+                      {currentQuestion.Begründung && (
                         <div>
                           <span className="font-semibold">Begründung:</span>
-                          <p className="mt-1 md:mt-2">{currentQ.Begründung}</p>
+                          <p className="mt-1 md:mt-2">{currentQuestion.Begründung}</p>
                         </div>
                       )}
                     </div>
@@ -871,7 +540,7 @@ export function QuizContainer({
                     {/* Weiter-Button */}
                     <div className="mt-4 md:mt-6 flex justify-end">
                       <button 
-                        onClick={handleNext}
+                        onClick={nextQuestion}
                         disabled={isAnimationPlaying}
                         className={`px-4 md:px-6 py-2 font-medium rounded transition-colors ${
                           isAnimationPlaying 
@@ -884,9 +553,9 @@ export function QuizContainer({
                     </div>
                   </div>
                 )}
-                
+
                 {/* Vergleichscontainer für OpenQuestion */}
-                {showExplanation && currentQ && currentQ.type === "open_question" && (
+                {showExplanation && currentQuestion && currentQuestion.type === "open_question" && (
                   <div className="mt-4 md:mt-8 p-3 md:p-5 bg-gray-800 rounded-md border border-yellow-400 overflow-y-auto max-h-[300px] md:max-h-[450px]">
                     <h3 className="text-base md:text-lg font-bold mb-2 md:mb-3 text-white">Vergleiche deine Antwort:</h3>
                     
@@ -900,7 +569,7 @@ export function QuizContainer({
                     <div className="mb-3 md:mb-4">
                       <h4 className="font-semibold text-white text-sm md:text-base">Musterlösung:</h4>
                       <div className="p-2 md:p-3 bg-gray-700 border border-gray-600 rounded mt-1 text-white text-sm md:text-base">
-                        {currentQ["Richtige Antwort"] || <em className="text-gray-400">Keine Musterlösung verfügbar</em>}
+                        {currentQuestion["Richtige Antwort"] || <em className="text-gray-400">Keine Musterlösung verfügbar</em>}
                       </div>
                     </div>
                     
@@ -916,24 +585,7 @@ export function QuizContainer({
                             }`}
                             onClick={async () => {
                               if (lastAnswerCorrect === null) {
-                                setLastAnswerCorrect(true);
-                                const didAward = await awardNormal(currentQ.id, true);
-                                if (didAward && globalUserStats) {
-                                  const xpDelta = 10;
-                                  const coinDelta = 1;
-                                  setRoundXp((prev) => prev + xpDelta);
-                                  setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-                                  setRewardXp(xpDelta);
-                                  setRewardCoins(coinDelta);
-                                  setShowRewardAnimation(true);
-                                  setTimeout(() => {
-                                    setShowRewardAnimation(false);
-                                  }, 2000);
-                                  await updateUserStats({
-                                    total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
-                                    total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
-                                  });
-                                }
+                                await handleAnswer(true);
                               }
                             }}
                             disabled={lastAnswerCorrect !== null}
@@ -953,24 +605,7 @@ export function QuizContainer({
                             }`}
                             onClick={async () => {
                               if (lastAnswerCorrect === null) {
-                                setLastAnswerCorrect(false);
-                                const didAward = await awardNormal(currentQ.id, false);
-                                if (didAward && globalUserStats) {
-                                  const xpDelta = 0;
-                                  const coinDelta = -1;
-                                  setRoundXp((prev) => prev + xpDelta);
-                                  setRoundCoins((prev) => Math.max(0, prev + coinDelta));
-                                  setRewardXp(xpDelta);
-                                  setRewardCoins(coinDelta);
-                                  setShowRewardAnimation(true);
-                                  setTimeout(() => {
-                                    setShowRewardAnimation(false);
-                                  }, 2000);
-                                  await updateUserStats({
-                                    total_xp: (globalUserStats.total_xp ?? 0) + xpDelta,
-                                    total_coins: (globalUserStats.total_coins ?? 0) + coinDelta,
-                                  });
-                                }
+                                await handleAnswer(false);
                               }
                             }}
                             disabled={lastAnswerCorrect !== null}
@@ -987,7 +622,7 @@ export function QuizContainer({
                         {/* Weiter-Button für OpenQuestion */}
                         {lastAnswerCorrect !== null && (
                           <button 
-                            onClick={handleNext}
+                            onClick={nextQuestion}
                             disabled={isAnimationPlaying}
                             className={`w-full md:w-auto mt-2 md:mt-0 px-4 md:px-6 py-2 font-medium rounded transition-colors ${
                               isAnimationPlaying 
@@ -1009,9 +644,9 @@ export function QuizContainer({
             <div className="w-full md:w-[40%] bg-white p-4 md:p-8 flex flex-col items-center justify-start pt-8 md:pt-16 relative min-h-[300px] md:min-h-[600px]">
               {/* Container für den Hauptinhalt */}
               <div className="w-full mb-8 md:mb-16">
-                {currentQ?.type === "open_question" ? (
+                {currentQuestion?.type === "open_question" ? (
                   <div className="w-full">{content}</div>
-                ) : currentQ?.type === "true_false" ? (
+                ) : currentQuestion?.type === "true_false" ? (
                   <div className="w-full flex flex-col gap-4 md:gap-6">
                     <button
                       onClick={async () => {
@@ -1042,10 +677,10 @@ export function QuizContainer({
                   streakBoostUsed={streakBoostUsed}
                   hintUsed={hintUsed}
                   fiftyFiftyUsed={fiftyFiftyUsed}
-                  handleXpBoostClick={() => setXpBoostUsed(true)}
-                  handleStreakBoostClick={() => setStreakBoostUsed(true)}
-                  handleHintClick={() => setHintUsed(true)}
-                  handleFiftyFiftyClick={() => setFiftyFiftyUsed(true)}
+                  handleXpBoostClick={() => toggleJokerPanel(true)}
+                  handleStreakBoostClick={() => toggleJokerPanel(true)}
+                  handleHintClick={() => toggleJokerPanel(true)}
+                  handleFiftyFiftyClick={() => toggleJokerPanel(true)}
                   disabled={showExplanation}
                 />
               </div>
@@ -1053,6 +688,33 @@ export function QuizContainer({
           </div>
         </div>
       </div>
+
+      {/* Level-Up Animation */}
+      {showLevelUpAnimation && (
+        <motion.div
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0, opacity: 0 }}
+          className="fixed inset-0 flex items-center justify-center z-50"
+        >
+          <div className="bg-black bg-opacity-50 absolute inset-0" />
+          <motion.div
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 50, opacity: 0 }}
+            className="bg-white rounded-lg p-8 relative z-10 text-center"
+          >
+            <h2 className="text-2xl font-bold text-green-600 mb-4">Level Up!</h2>
+            <p className="text-gray-700">Glückwunsch! Du hast ein neues Level erreicht!</p>
+            <button
+              onClick={() => setShowLevelUpAnimation(false)}
+              className="mt-4 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition-colors"
+            >
+              Weiter
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   );
 }

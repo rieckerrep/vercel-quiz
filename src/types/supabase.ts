@@ -560,6 +560,7 @@ export type Database = {
         Row: {
           avatar_url: string | null
           bronze_medals: number | null
+          correct_answers: number | null
           created_at: string | null
           current_league: string | null
           gold_medals: number | null
@@ -567,6 +568,7 @@ export type Database = {
           last_played: string | null
           league_group: string | null
           level: number | null
+          questions_answered: number | null
           silver_medals: number | null
           streak: number | null
           title: string | null
@@ -579,6 +581,7 @@ export type Database = {
         Insert: {
           avatar_url?: string | null
           bronze_medals?: number | null
+          correct_answers?: number | null
           created_at?: string | null
           current_league?: string | null
           gold_medals?: number | null
@@ -586,6 +589,7 @@ export type Database = {
           last_played?: string | null
           league_group?: string | null
           level?: number | null
+          questions_answered?: number | null
           silver_medals?: number | null
           streak?: number | null
           title?: string | null
@@ -598,6 +602,7 @@ export type Database = {
         Update: {
           avatar_url?: string | null
           bronze_medals?: number | null
+          correct_answers?: number | null
           created_at?: string | null
           current_league?: string | null
           gold_medals?: number | null
@@ -605,6 +610,7 @@ export type Database = {
           last_played?: string | null
           league_group?: string | null
           level?: number | null
+          questions_answered?: number | null
           silver_medals?: number | null
           streak?: number | null
           title?: string | null
