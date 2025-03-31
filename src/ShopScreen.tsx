@@ -3,6 +3,11 @@ import { motion } from "framer-motion";
 import "./ShopScreen.css";
 import { supabase } from "./supabaseClient";
 
+interface Notification {
+  message: string;
+  type: "success" | "error";
+}
+
 interface ShopAvatar {
   id: number;
   title: string;
@@ -40,11 +45,8 @@ export function ShopScreen({
   const [loading, setLoading] = useState(true);
   const [sortOption, setSortOption] = useState<"name" | "price">("name");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [notification, setNotification] = useState<{
-    message: string;
-    type: "error" | "success";
-  } | null>(null);
   const [animating, setAnimating] = useState(false);
+  const [notification, setNotification] = useState<Notification | null>(null);
   
   // Funktion zur Korrektur der Image-URLs - nur für URL-Formatkorrektur
   const fixImageUrl = (url: string): string => {
