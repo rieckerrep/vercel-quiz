@@ -47,7 +47,23 @@ const TrueFalseQuestion: React.FC<TrueFalseQuestionProps> = ({
 
   const handleAnswer = (answer: string) => {
     setUserAnswer(answer);
-    const isCorrect = answer.toLowerCase() === questionData?.["Richtige Antwort"].toLowerCase();
+    
+    // Normalisiere die Datenbankantwort
+    const dbAnswer = questionData?.["Richtige Antwort"].toLowerCase().trim() || "";
+    const isDbAnswerTrue = ["true", "wahr", "1", "ja", "richtig"].includes(dbAnswer);
+    
+    // Bestimme, ob die Antwort korrekt ist
+    // Wenn der Benutzer "Richtig" wählt und die Datenbankantwort "true" ist, ist es richtig
+    // Wenn der Benutzer "Falsch" wählt und die Datenbankantwort "false" ist, ist es auch richtig
+    const isCorrect = (answer === "Richtig" && isDbAnswerTrue) || (answer === "Falsch" && !isDbAnswerTrue);
+    
+    console.log("TrueFalseQuestion - Antwortüberprüfung:", {
+      dbAnswer,
+      isDbAnswerTrue,
+      userAnswer: answer,
+      isCorrect
+    });
+    
     onComplete(isCorrect);
   };
 

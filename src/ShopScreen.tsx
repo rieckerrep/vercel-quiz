@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import "./ShopScreen.css";
 import { supabase } from "./supabaseClient";
-import { useUserStats } from "./useUserStats";
-import { useQuiz } from "./QuizContext";
+import { useUserStore } from "./store/useUserStore";
+import { useQuizStore } from "./store/useQuizStore";
+import { shopService } from "./api/shopService";
 import { Database } from "./types/supabase";
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
@@ -16,11 +17,11 @@ interface Notification {
 
 interface ShopAvatar {
   id: number;
-  title: string;
-  category: string;
+  title: string | null;
+  category: string | null;
   image_url: string;
   price: number;
-  active: boolean;
+  active: boolean | null;
 }
 
 interface ShopScreenProps {
@@ -41,8 +42,10 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [animating, setAnimating] = useState(false);
   const [notification, setNotification] = useState<Notification | null>(null);
-  const { userStats, refetch: refetchUserStats } = useUserStats(user?.id);
-  const { roundCoins, setRoundCoins } = useQuiz();
+  
+  // Store-Hooks
+  const { userStats, fetchUserStats } = useUserStore();
+  const { roundCoins, setRoundCoins } = useQuizStore();
 
   // Funktion zur Korrektur der Image-URLs - nur für URL-Formatkorrektur
   const fixImageUrl = (url: string): string => {
@@ -58,58 +61,44 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
     return url;
   };
 
+  // Lade Avatare beim Start
   useEffect(() => {
-    (async () => {
+    async function loadAvatars() {
       setLoading(true);
-      
-      // Avatare von der Datenbank laden
-      const { data, error } = await supabase
-        .from("shop_avatars")
-        .select("id, title, category, image_url, price, active")
-        .eq("active", true);
-        
-      if (error) {
-        // Fehler beim Laden - leise behandeln
-        setLoading(false);
-        return;
-      } 
-      
-      if (data && data.length > 0) {
-        // Nur URL-Format korrigieren, nicht den Pfad ändern
-        const processedData = data.map(avatar => ({
-          ...avatar,
-          image_url: fixImageUrl(avatar.image_url)
-        }));
-        
-        setShopAvatars(processedData);
-        
-        // Setze die erste verfügbare Kategorie als ausgewählte Kategorie
-        const categories = Array.from(new Set(processedData.map(a => a.category))).sort();
-        if (categories.length > 0 && !selectedCategory) {
-          setSelectedCategory(categories[0]);
+      try {
+        // Lade Shop-Avatare
+        const { data: avatars, error: avatarsError } = await shopService.fetchAvatars();
+        if (avatarsError) {
+          console.error("Fehler beim Laden der Avatare:", avatarsError);
+          setLoading(false);
+          return;
         }
+        
+        if (avatars) {
+          setShopAvatars(avatars);
+        }
+        
+        // Lade gekaufte Avatare
+        const { data: userAvatars, error: userAvatarsError } = await shopService.fetchUserAvatars(user.id);
+        if (userAvatarsError) {
+          console.error("Fehler beim Laden der gekauften Avatare:", userAvatarsError);
+          setLoading(false);
+          return;
+        }
+        
+        if (userAvatars) {
+          const ownedIds = new Set(userAvatars.map(avatar => avatar.avatar_id));
+          setOwnedAvatars(ownedIds);
+        }
+      } catch (err) {
+        console.error("Fehler beim Laden der Avatare:", err);
+      } finally {
+        setLoading(false);
       }
-      
-      setLoading(false);
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    (async () => {
-      const { data, error } = await supabase
-        .from("user_avatars")
-        .select("avatar_id")
-        .eq("user_id", user.id);
-      if (!error && data) {
-        const owned = new Set<number>();
-        data.forEach((row: any) => {
-          owned.add(row.avatar_id);
-        });
-        setOwnedAvatars(owned);
-      }
-    })();
-  }, [user?.id]);
+    }
+    
+    loadAvatars();
+  }, [user.id]);
 
   const categories = Array.from(
     new Set(shopAvatars.map((a) => a.category))
@@ -128,7 +117,10 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
   // Sortiere die Avatare
   filteredAvatars = filteredAvatars.sort((a, b) => {
     if (sortOption === "name") {
-      return a.title.localeCompare(b.title);
+      // Sichere Behandlung von null-Werten
+      const titleA = a.title || '';
+      const titleB = b.title || '';
+      return titleA.localeCompare(titleB);
     } else {
       return a.price - b.price;
     }
@@ -154,22 +146,22 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
     
     const isOwned = ownedAvatars.has(avatar.id);
     if (isOwned) {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ avatar_url: avatar.image_url })
-        .eq("id", user.id);
+      // Avatar aktivieren
+      const { data, error } = await shopService.activateAvatar(user.id, avatar.id);
+      
       if (error) {
         setNotification({
-          message: "Fehler beim Setzen des Avatars.",
+          message: "Fehler beim Setzen des Avatars: " + error.message,
           type: "error",
         });
-      } else {
+      } else if (data?.success) {
         setRoundCoins(userStats.total_coins);
         setNotification({
           message: "Avatar erfolgreich ausgewählt!",
           type: "success",
         });
       }
+      
       setAnimating(false);
       return;
     }
@@ -189,41 +181,38 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
       return;
     }
     
-    const newCoins = userStats.total_coins - avatar.price;
-    const { error: updateError } = await supabase
-      .from("user_stats")
-      .update({ total_coins: newCoins })
-      .eq("user_id", user.id);
-      
-    if (updateError) {
+    // Avatar kaufen
+    const { data, error } = await shopService.buyAvatar(user.id, avatar.id);
+    
+    if (error) {
       setNotification({
-        message: "Fehler beim Aktualisieren der Münzen.",
+        message: "Fehler beim Kauf des Avatars: " + error.message,
         type: "error",
       });
       setAnimating(false);
       return;
     }
     
-    const { error: insertError } = await supabase
-      .from("user_avatars")
-      .insert([{ user_id: user.id, avatar_id: avatar.id }]);
+    if (data?.success && data.userStats) {
+      // Aktualisiere die lokalen States
+      setOwnedAvatars(new Set([...ownedAvatars, avatar.id]));
+      if (data.userStats.total_coins !== null) {
+        setRoundCoins(data.userStats.total_coins);
+      }
       
-    if (insertError) {
+      // Aktualisiere die User-Stats
+      await fetchUserStats(user.id);
+      
       setNotification({
-        message: "Fehler beim Kauf des Avatars.",
+        message: "Avatar erfolgreich gekauft!",
+        type: "success",
+      });
+    } else {
+      setNotification({
+        message: "Avatar konnte nicht gekauft werden.",
         type: "error",
       });
-      setAnimating(false);
-      return;
     }
-    
-    setOwnedAvatars((prev) => new Set(prev).add(avatar.id));
-    refetchUserStats();
-    
-    setNotification({
-      message: "Avatar erfolgreich gekauft!",
-      type: "success",
-    });
     
     setAnimating(false);
   }
@@ -392,7 +381,7 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
                           padding: '4px'
                         }}
                         src={avatar.image_url}
-                        alt={avatar.title}
+                        alt={avatar.title?.toString() || ''}
                         initial={{ scale: 0.9, opacity: 0.8 }}
                         animate={{ scale: 1, opacity: 1 }}
                         transition={{ duration: 0.3 }}

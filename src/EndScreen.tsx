@@ -14,6 +14,7 @@ export interface EndScreenProps {
   onOpenLeaderboard: () => void;
   onOpenShop: () => void;
   onOpenProfile: () => void;
+  correctAnswers: number;
 }
 
 interface Profile {
@@ -54,6 +55,7 @@ export default function EndScreen({
   onOpenLeaderboard,
   onOpenShop,
   onOpenProfile,
+  correctAnswers,
 }: EndScreenProps) {
   // Halbkreis-Animation (rechte Seite)
   const [circleDash, setCircleDash] = useState(0);
@@ -82,6 +84,14 @@ export default function EndScreen({
 
   // Animation für den Fortschrittsbalken
   useEffect(() => {
+    // Debug-Logging
+    console.log("EndScreen - Fortschrittsberechnung:", {
+      roundXp,
+      possibleRoundXp,
+      correctAnswers
+    });
+
+    // Berechne den Fortschritt basierend auf den verdienten XP
     const ratio = possibleRoundXp > 0 ? roundXp / possibleRoundXp : 0;
     const finalProgress = ratio * halfCircleCircumference;
     
@@ -102,6 +112,11 @@ export default function EndScreen({
 
     return () => clearInterval(timer);
   }, [roundXp, possibleRoundXp]);
+
+  // Debug-Logging für correctAnswers
+  useEffect(() => {
+    console.log("EndScreen - Erhaltene correctAnswers:", correctAnswers);
+  }, [correctAnswers]);
 
   // 1) Profil + Stats laden
   useEffect(() => {
@@ -373,7 +388,7 @@ export default function EndScreen({
     );
   }
 
-  const questionsCorrect = Math.floor(roundXp / 10);
+  const questionsCorrect = correctAnswers;
   const levelName = levelData?.level_title || "Unbekannter Level";
   const xpNow = stats.total_xp;
   const xpNext = nextLevelXP ?? (levelData?.xp_required ?? 0) + 100;
@@ -390,7 +405,7 @@ export default function EndScreen({
 
   return (
     <motion.div 
-      className="quiz-container min-h-[600px] bg-[#151923] rounded-lg shadow-lg overflow-auto"
+      className="quiz-container min-h-[600px] bg-[#151923] rounded-lg shadow-lg"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
@@ -398,7 +413,8 @@ export default function EndScreen({
       {/* Level-Up Animation */}
       {showLevelUpAnimation && <LevelUpAnimation />}
 
-      <div className="flex flex-col md:flex-row min-h-[600px]">
+      {/* Container für den gesamten Inhalt */}
+      <div className="flex flex-col md:flex-row w-full h-full">
         {/* Linke Spalte (dunkler Hintergrund) */}
         <motion.div 
           className="w-full md:w-1/2 bg-[#10131c] text-white p-6 flex flex-col"
@@ -625,7 +641,7 @@ export default function EndScreen({
 
         {/* Rechte Spalte (hellerer Hintergrund) */}
         <motion.div 
-          className="w-full md:w-1/2 bg-[#202431] p-6 flex flex-col items-center overflow-y-auto"
+          className="w-full md:w-1/2 bg-[#202431] p-6 flex flex-col items-center"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.3 }}

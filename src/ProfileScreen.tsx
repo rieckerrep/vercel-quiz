@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
-import { supabase } from "./supabaseClient"; // Pfad ggf. anpassen
 import { motion, AnimatePresence } from "framer-motion";
 import "./ProfileScreen.css";
+import { supabase } from "./supabaseClient";
+import { userService } from "./api/userService";
+import { authService } from "./api/authService";
+import { Database } from "./types/supabase";
 
 /** Datenstrukturen **/
 interface Profile {
@@ -215,7 +218,10 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
   // ========== SETTINGS SAVE ==========
   async function handleSaveSettings() {
     if (!profile) return;
-    const user = (await supabase.auth.getSession()).data.session?.user;
+    
+    const { data: sessionData } = await authService.getSession();
+    const user = sessionData?.user;
+    
     if (!user) {
       alert("Keine Session. Bitte neu einloggen.");
       return;
@@ -244,7 +250,12 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
     if (selectedUniversity) updateObj.university = selectedUniversity;
 
     if (Object.keys(updateObj).length > 0) {
-      await supabase.from("profiles").update(updateObj).eq("id", user.id);
+      const { error } = await userService.updateProfile(user.id, updateObj);
+      if (error) {
+        alert("Fehler beim Aktualisieren des Profils: " + error.message);
+        return;
+      }
+      
       setProfile((prev) =>
         prev
           ? {
@@ -262,24 +273,24 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
         alert("Bitte altes Passwort eingeben!");
         return;
       }
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: user.email!,
-        password: oldPassword,
-      });
+      
+      // Überprüfe altes Passwort
+      const { error: signInError } = await authService.login(user.email!, oldPassword);
       if (signInError) {
         alert("Altes Passwort ist falsch!");
         return;
       }
-      const { error: passError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
+      
+      // Passwort ändern
+      const { error: passError } = await authService.changePassword(newPassword);
       if (passError) {
         alert("Fehler beim Passwort-Update: " + passError.message);
         return;
       }
     }
-
-    alert("Einstellungen gespeichert!");
+    
+    // Erfolgsmeldung
+    alert("Einstellungen erfolgreich gespeichert!");
     setShowSettings(false);
     // Felder leeren
     setNewUsername("");

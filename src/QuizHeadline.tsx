@@ -24,37 +24,33 @@ const QuizHeadline: React.FC<QuizHeadlineProps> = ({
   onOpenSettings,
   onOpenLeaderboard,
   roundXp,
-  roundCoins
+  roundCoins,
 }) => {
   const xpBoxRef = useRef<HTMLDivElement>(null);
   const coinBoxRef = useRef<HTMLDivElement>(null);
-  const { profile: userProfile, userStats, fetchProfile, fetchUserStats } = useUserStore();
+  const { profile: userProfile, totalXp, totalCoins, loadUserData } = useUserStore();
 
   // Profildaten und Statistiken laden
   useEffect(() => {
     if (user?.id) {
-      fetchProfile(user.id);
-      fetchUserStats(user.id);
+      loadUserData(user.id);
     }
-  }, [user?.id, fetchProfile, fetchUserStats]);
+  }, [user?.id, loadUserData]);
 
-  const prevXpRef = useRef<number>(userStats?.total_xp ?? 0);
-  const prevCoinsRef = useRef<number>(userStats?.total_coins ?? 0);
+  const prevXpRef = useRef<number>(totalXp);
+  const prevCoinsRef = useRef<number>(totalCoins);
   const hasMounted = useRef(false);
 
   useEffect(() => {
-    if (!userStats) return;
-
     if (!hasMounted.current) {
-      prevXpRef.current = userStats.total_xp ?? 0;
-      prevCoinsRef.current = userStats.total_coins ?? 0;
+      prevXpRef.current = totalXp;
+      prevCoinsRef.current = totalCoins;
       hasMounted.current = true;
       return;
     }
 
     // XP-Animation
-    const currentXp = userStats.total_xp ?? 0;
-    const xpDiff = currentXp - prevXpRef.current;
+    const xpDiff = totalXp - prevXpRef.current;
     if (xpDiff !== 0 && xpBoxRef.current) {
       const xpChangeEl = document.createElement("div");
       xpChangeEl.classList.add("xp-change");
@@ -67,11 +63,10 @@ const QuizHeadline: React.FC<QuizHeadlineProps> = ({
           xpBoxRef.current.removeChild(xpChangeEl);
       }, 2000);
     }
-    prevXpRef.current = currentXp;
+    prevXpRef.current = totalXp;
 
     // Coins-Animation
-    const currentCoins = userStats.total_coins ?? 0;
-    const coinDiff = currentCoins - prevCoinsRef.current;
+    const coinDiff = totalCoins - prevCoinsRef.current;
     if (coinDiff !== 0 && coinBoxRef.current) {
       const coinChangeEl = document.createElement("div");
       coinChangeEl.classList.add("coin-change");
@@ -84,8 +79,8 @@ const QuizHeadline: React.FC<QuizHeadlineProps> = ({
           coinBoxRef.current.removeChild(coinChangeEl);
       }, 2000);
     }
-    prevCoinsRef.current = currentCoins;
-  }, [userStats]);
+    prevCoinsRef.current = totalCoins;
+  }, [totalXp, totalCoins]);
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -135,13 +130,13 @@ const QuizHeadline: React.FC<QuizHeadlineProps> = ({
           {/* XP */}
           <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 md:px-4 md:py-2 rounded" ref={xpBoxRef}>
             <span className="text-yellow-400 text-lg md:text-xl">⭐</span>
-            <span className="font-medium text-sm md:text-base">{userStats?.total_xp ?? 0}</span>
+            <span className="font-medium text-sm md:text-base">{totalXp}</span>
           </div>
 
           {/* Münzen */}
           <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 md:px-4 md:py-2 rounded" ref={coinBoxRef}>
             <span className="text-yellow-400 text-lg md:text-xl">🪙</span>
-            <span className="font-medium text-sm md:text-base">{userStats?.total_coins ?? 0}</span>
+            <span className="font-medium text-sm md:text-base">{totalCoins}</span>
           </div>
 
           {/* Buttons als Icons */}

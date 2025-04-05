@@ -1,0 +1,68 @@
+                       ┌────────────────────┐
+                       │   useUserStore     │
+                       └────────────────────┘
+                       │ user: Profile       │
+                       │ university: string  │
+                       │ avatarUrl: string   │
+                       │ leagueName: string  │
+                       │ medals: Medal[]     │
+                       │ updateUser(data)    │
+                       └───────┬─────────────┘
+                               │
+                               ▼
+                       ┌────────────────────┐
+                       │  useUserStatsStore │
+                       └────────────────────┘
+                       │ totalXP: number     │
+                       │ totalCoins: number  │
+                       │ level: string       │
+                       │ setXP(xp)           │
+                       │ setCoins(coins)     │
+                       └─────────────────────┘
+
+─────────────────────────────────────────────────────────────
+
+                       ┌────────────────────┐
+                       │   useQuizStore     │
+                       └────────────────────┘
+                       │ questions[]         │
+                       │ currentIndex        │
+                       │ currentQuestion     │
+                       │ answersGiven[]      │
+                       │ roundStats          │
+                       │ usedJokers[]        │
+                       │ answerQuestion()    │
+                       │ resetQuiz()         │
+                       └───────┬─────────────┘
+                               │
+                               ▼
+                    ┌────────────────────────────┐
+                    │ useProgressionStore (opt.) │
+                    └────────────────────────────┘
+                    │ correctAnswers             │
+                    │ wrongAnswers               │
+                    │ skillTreeProgress?         │
+                    └────────────────────────────┘
+
+─────────────────────────────────────────────────────────────
+
+                       ┌────────────────────┐
+                       │   useUIStore       │
+                       └────────────────────┘
+                       │ loading: boolean    │
+                       │ error: string|null  │
+                       │ modalOpen: boolean  │
+                       │ showNotification()  │
+                       └─────────────────────┘
+
+─────────────────────────────────────────────────────────────
+
+                       ┌────────────────────┐
+                       │  useShopStore       │
+                       └────────────────────┘
+                       │ availableAvatars[]  │
+                       │ ownedAvatars[]      │
+                       │ buyAvatar()         │
+                       │ selectAvatar()      │
+                       └─────────────────────┘
+

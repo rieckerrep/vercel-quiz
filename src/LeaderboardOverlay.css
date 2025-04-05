@@ -1,74 +1,371 @@
-/* LeaderboardOverlay.css */
-
 .leaderboard-overlay {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  right: 0;
+  bottom: 0;
   background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
   z-index: 1000;
+  backdrop-filter: blur(5px);
+}
+
+.leaderboard-content {
+  background-color: white;
+  border-radius: 12px;
+  padding: 2.5rem;
+  width: 95%;
+  height: 95vh;
+  max-width: 1400px;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+  border: 2px solid #000;
+}
+
+.leaderboard-content::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: linear-gradient(90deg, #000, #FFCC00);
+  border-radius: 10px 10px 0 0;
+}
+
+.leaderboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.leaderboard-title {
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: #000;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  cursor: pointer;
+  color: #000;
+  transition: all 0.2s;
+  width: 50px;
+  height: 50px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  border-radius: 50%;
 }
 
-.leaderboard-container {
-  width: 90%;
-  max-width: 1200px;
-  height: 90vh;
-  background-color: #fff;
+.close-button:hover {
+  color: #FFCC00;
+  background-color: #f7fafc;
+  transform: rotate(90deg);
+}
+
+.leaderboard-tabs {
   display: flex;
-  border-radius: 8px;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  padding: 0.75rem;
+  background-color: #f7fafc;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+}
+
+.leaderboard-tab {
+  padding: 1rem 1.5rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+  flex: 1;
+  text-align: center;
+  position: relative;
   overflow: hidden;
+  font-size: 1.125rem;
 }
 
-.leaderboard-sidebar {
-  width: 200px;
-  background-color: #fff;
-  padding: 1rem;
-  border-right: 1px solid #ddd;
+.leaderboard-tab.active {
+  background-color: #000;
+  color: white;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
 
-.leaderboard-sidebar h3 {
-  font-size: 1.2rem;
+.leaderboard-tab:not(.active):hover {
+  background-color: #e2e8f0;
+  transform: translateY(-2px);
+}
+
+/* Liga-Auswahl Styling */
+.league-selector {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background-color: #f7fafc;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+}
+
+.league-selector-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #000;
   margin-bottom: 1rem;
 }
 
-.leaderboard-sidebar ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.league-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
-.leaderboard-sidebar ul li {
-  padding: 8px;
+.league-button {
+  padding: 0.75rem 1.25rem;
+  border-radius: 2rem;
+  font-size: 1rem;
+  font-weight: 500;
   cursor: pointer;
-  border-radius: 4px;
-  margin-bottom: 8px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid #e2e8f0;
 }
 
-.leaderboard-sidebar ul li:hover,
-.leaderboard-sidebar ul li.active {
-  background-color: #eee;
+.league-button.active {
+  background-color: #000;
+  color: white;
+  border-color: #000;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-.leaderboard-main {
-  flex: 1;
-  background-color: #fff;
-  padding: 1rem;
-  position: relative;
-  overflow-y: auto;
-  border-radius: 0 8px 8px 0;
+.league-button:not(.active) {
+  background-color: white;
+  color: #000;
 }
 
-.leaderboard-close {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  background: transparent;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
+.league-button:not(.active):hover {
+  background-color: #e2e8f0;
+  transform: translateY(-2px);
 }
+
+.league-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Tabellen-Styling */
+.leaderboard-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e2e8f0;
+  font-family: Cambria, serif;
+}
+
+.leaderboard-table thead {
+  background-color: #000;
+}
+
+.leaderboard-table th {
+  padding: 1.25rem;
+  text-align: left;
+  font-weight: 600;
+  color: white;
+  text-transform: uppercase;
+  font-size: 0.875rem;
+  letter-spacing: 0.05em;
+  font-family: Cambria, serif;
+}
+
+.leaderboard-table tbody tr {
+  transition: all 0.2s;
+}
+
+.leaderboard-table tbody tr:hover {
+  background-color: #f7fafc;
+}
+
+.leaderboard-table td {
+  padding: 1.25rem;
+  border-top: 1px solid #e2e8f0;
+  font-size: 1.125rem;
+  color: black;
+  font-family: Cambria, serif;
+}
+
+.leaderboard-table tr:nth-child(1) {
+  background-color: rgba(255, 204, 0, 0.1);
+}
+
+.leaderboard-table tr:nth-child(2) {
+  background-color: rgba(192, 192, 192, 0.1);
+}
+
+.leaderboard-table tr:nth-child(3) {
+  background-color: rgba(205, 127, 50, 0.1);
+}
+
+/* Aufsteiger und Absteiger Styling */
+.leaderboard-table tr.bg-green-50 {
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+.leaderboard-table tr.bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* Dark mode styles */
+@media (prefers-color-scheme: dark) {
+  .leaderboard-content {
+    background-color: #1a202c;
+    color: #e2e8f0;
+    border-color: #FFCC00;
+  }
+
+  .leaderboard-content::before {
+    background: linear-gradient(90deg, #FFCC00, #000);
+  }
+
+  .leaderboard-title {
+    color: #FFCC00;
+  }
+
+  .leaderboard-header {
+    border-bottom: 1px solid #2d3748;
+  }
+
+  .close-button {
+    color: #FFCC00;
+  }
+
+  .close-button:hover {
+    background-color: #2d3748;
+  }
+
+  .leaderboard-tabs {
+    background-color: #2d3748;
+    border-color: #4a5568;
+  }
+
+  .leaderboard-tab:not(.active):hover {
+    background-color: #4a5568;
+  }
+
+  .leaderboard-tab.active {
+    background-color: #FFCC00;
+    color: #000;
+  }
+
+  /* Liga-Auswahl Dark Mode */
+  .league-selector {
+    background-color: #2d3748;
+    border-color: #4a5568;
+  }
+
+  .league-selector-title {
+    color: #FFCC00;
+  }
+
+  .league-button:not(.active) {
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border-color: #4a5568;
+  }
+
+  .league-button:not(.active):hover {
+    background-color: #4a5568;
+  }
+
+  .league-button.active {
+    background-color: #FFCC00;
+    color: #000;
+    border-color: #FFCC00;
+  }
+
+  /* Tabellen Dark Mode */
+  .leaderboard-table thead {
+    background-color: #000;
+  }
+
+  .leaderboard-table th {
+    color: #FFCC00;
+  }
+
+  .leaderboard-table td {
+    border-top: 1px solid #4a5568;
+    color: #e2e8f0;
+  }
+
+  .leaderboard-table tbody tr:hover {
+    background-color: #2d3748;
+  }
+
+  .leaderboard-table tr:nth-child(1) {
+    background-color: rgba(255, 204, 0, 0.05);
+  }
+
+  .leaderboard-table tr:nth-child(2) {
+    background-color: rgba(192, 192, 192, 0.05);
+  }
+
+  .leaderboard-table tr:nth-child(3) {
+    background-color: rgba(205, 127, 50, 0.05);
+  }
+
+  /* Aufsteiger und Absteiger Dark Mode Styling */
+  .leaderboard-table tr.bg-green-900\/20 {
+    background-color: rgba(16, 185, 129, 0.15);
+  }
+
+  .leaderboard-table tr.bg-red-900\/20 {
+    background-color: rgba(239, 68, 68, 0.15);
+  }
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .leaderboard-content {
+    padding: 1.5rem;
+    width: 100%;
+    height: 100vh;
+    border-radius: 0;
+  }
+
+  .leaderboard-content::before {
+    border-radius: 0;
+  }
+
+  .leaderboard-title {
+    font-size: 1.75rem;
+  }
+
+  .leaderboard-tabs {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .league-buttons {
+    flex-direction: column;
+  }
+
+  .league-button {
+    width: 100%;
+    justify-content: center;
+  }
+} 

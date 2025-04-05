@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import { motion } from "framer-motion";
+import { useQuizStore } from "./store/useQuizStore";
 
 // Datentyp für Eintrag in der Tabelle multiple_choice_options
 interface MCOption {
@@ -62,6 +63,15 @@ export default function MultipleChoiceQuestion({
         return !selected.has(opt.id);
       }
     });
+
+    // Formatiere die richtigen Antworten für die Anzeige
+    const correctAnswers = options
+      .filter(opt => opt.is_correct)
+      .map(opt => opt.option_text)
+      .join('\n');
+
+    // Speichere die richtigen Antworten im Store
+    useQuizStore.setState({ correctMultipleChoiceAnswer: correctAnswers });
 
     // Callback an den QuizContainer
     onComplete(allCorrectSelected);

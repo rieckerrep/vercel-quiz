@@ -4,6 +4,7 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 import { TouchBackend } from "react-dnd-touch-backend";
 import { supabase } from "./supabaseClient";
 import { motion } from "framer-motion";
+import { useQuizStore } from "./store/useQuizStore";
 
 // Typdefinition für ein Drag-Drop-Paar (aus der Tabelle "dragdrop_pairs")
 export interface DragPair {
@@ -157,6 +158,7 @@ export default function DragDropQuestion({
   const [droppedItems, setDroppedItems] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const hasCompletedRef = useRef(false);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -226,11 +228,22 @@ export default function DragDropQuestion({
   useEffect(() => {
     if (pairs.length === 0) return;
     const allAnswered = pairs.every((pair) => matched[pair.id] !== undefined);
-    if (allAnswered) {
+    if (allAnswered && !hasCompletedRef.current) {
       const overallCorrect = pairs.every((pair) => matched[pair.id] === true);
+      
+      // Formatiere die richtige Antwort für die Anzeige
+      const correctAnswer = pairs
+        .map(pair => `${pair.drag_text} → ${pair.correct_match}`)
+        .join('\n');
+
+      // Speichere die richtige Antwort im Store und rufe onComplete auf
       const timer = setTimeout(() => {
+        // Setze die Antwort und rufe dann onComplete auf
+        useQuizStore.setState({ correctDragDropAnswer: correctAnswer });
+        hasCompletedRef.current = true;
         onComplete(overallCorrect);
       }, 800);
+      
       return () => clearTimeout(timer);
     }
   }, [matched, pairs, onComplete]);

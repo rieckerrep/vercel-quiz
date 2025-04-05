@@ -3,7 +3,6 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { initDebugMode } from "./QuizDebug";
-import { QuizProvider } from "./QuizContext";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // Debug-Modus initialisieren, falls aktiviert
@@ -26,9 +25,7 @@ const root = ReactDOM.createRoot(
 root.render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <QuizProvider>
-        <App />
-      </QuizProvider>
+      <App />
     </QueryClientProvider>
   </React.StrictMode>
 );

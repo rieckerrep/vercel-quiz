@@ -1,6 +1,5 @@
 // QuizContainer.tsx
-import { useEffect } from "react";
-import { useQuestions } from "./useQuestions";
+import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from "./supabaseClient";
 import QuizHeadline from "./QuizHeadline";
 import JokerPanel from "./JokerPanel";
@@ -13,13 +12,14 @@ import EndScreen from "./EndScreen";
 import QuestionNavigation from "./QuestionNavigation";
 import { useQuizStore } from "./store/useQuizStore";
 import { useSoundStore } from "./store/useSoundStore";
-import { useQuizAwards } from "./useQuizAwards";
-import { useUserStats } from "./useUserStats";
-import RewardAnimation from "./RewardAnimation";
 import LueckentextQuestion from "./LueckentextQuestion";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Database } from "./types/supabase";
 import { useUserStore } from "./store/useUserStore";
+import { authService } from "./api/authService";
+import { userService } from "./api/userService";
+import { quizService } from "./api/quizService";
+import { Question } from "./store/useQuizStore";
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
@@ -44,25 +44,31 @@ export function QuizContainer({
 }: QuizContainerProps) {
   const chapterId = 1;
   const { playCorrectSound, playWrongSound } = useSoundStore();
-  const { awardQuestion: awardNormal } = useQuizAwards(user.id);
-  const { userStats: globalUserStats, updateUserStats } = useUserStats(user.id);
-  const { addXP, addCoins, incrementQuestionsAnswered, incrementCorrectAnswers, fetchUserStats } = useUserStore();
+  const { addXp, addCoins, incrementAnsweredQuestions, incrementCorrectAnswers, fetchUserStats } = useUserStore();
 
   // Zustand Store
   const {
     questions,
     currentQuestion,
     currentQuestionIndex,
+    totalQuestions,
+    isQuizActive,
     isAnswerSubmitted,
     selectedAnswer,
+    isCorrect,
     showExplanation,
+    isQuizEnd,
     lastAnswerCorrect,
     userInputAnswer,
-    isQuizEnd,
+    isLoading,
     showNavigation,
     showJokerPanel,
     showLeaderboard,
     progress,
+    correctAnswers,
+    wrongAnswers,
+    streak,
+    maxStreak,
     roundXp,
     roundCoins,
     possibleRoundXp,
@@ -74,16 +80,23 @@ export function QuizContainer({
     streakBoostUsed,
     fiftyFiftyUsed,
     hintUsed,
-    isLoading,
-    isQuestionsLoading,
-    questionsError,
+    subQuestions,
+    subQuestionResults,
     fetchQuestions,
+    setCurrentQuestion,
     setCurrentQuestionIndex,
+    setTotalQuestions,
+    setIsQuizActive,
+    setIsAnswerSubmitted,
+    setSelectedAnswer,
+    setIsCorrect,
+    setShowNavigation,
+    setShowJokerPanel,
+    setShowLeaderboard,
     setProgress,
     setShowExplanation,
     setLastAnswerCorrect,
     setUserInputAnswer,
-    setIsAnswerSubmitted,
     setIsQuizEnd,
     setRoundXp,
     setRoundCoins,
@@ -96,6 +109,12 @@ export function QuizContainer({
     setStreakBoostUsed,
     setFiftyFiftyUsed,
     setHintUsed,
+    setSubQuestions,
+    setSubQuestionResult,
+    setIsLoading,
+    incrementLocalCorrectAnswers,
+    incrementLocalWrongAnswers,
+    updateStreak,
     handleAnswer,
     handleFinalAnswer,
     nextQuestion,
@@ -105,17 +124,34 @@ export function QuizContainer({
     handleTrueFalseAnswer,
     handleSubquestionAnswered,
     finalizeQuiz,
+    computeXp,
     resetQuiz,
+    answeredQuestions,
+    fetchAnsweredQuestions,
+    isQuestionAnswered,
     showLevelUpAnimation,
     setShowLevelUpAnimation,
+    computePossibleXp,
+    checkQuizEnd,
+    updateUserStats,
+    handleQuestionNavigation,
+    calculateProgress,
+    handleNavigation,
+    getAnsweredQuestions,
+    awardQuestion,
+    awardSubquestion,
+    showRewardAnimationWithSound,
+    hideRewardAnimation,
+    logQuizCompleted,
+    initQuiz
   } = useQuizStore();
 
   // Lade Fragen beim ersten Rendern
   useEffect(() => {
     if (chapterId) {
-      fetchQuestions(chapterId);
+      initQuiz();
     }
-  }, [chapterId, fetchQuestions]);
+  }, [chapterId, initQuiz]);
 
   // Berechne mögliche XP
   useEffect(() => {
@@ -152,6 +188,64 @@ export function QuizContainer({
     }
   }, [user?.id, roundXp, roundCoins, fetchUserStats]);
 
+  // Ersetze die Sound-Logik in den onClick-Handlern
+  const handleAnswerWithSound = async (isCorrect: boolean) => {
+    if (!currentQuestion) return;
+    if (isAnimationPlaying) return;
+    
+    // Verarbeite die Antwort
+    await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
+    await awardQuestion(currentQuestion.id, isCorrect);
+    
+    // Zeige die Animation mit Sound
+    await showRewardAnimationWithSound(isCorrect);
+  };
+
+  // Ersetze die Sound-Logik in den onClick-Handlern für true/false Fragen
+  const handleTrueFalseWithSound = async (isTrue: boolean) => {
+    if (isAnimationPlaying) {
+      console.log("handleTrueFalseWithSound - Animation läuft bereits, Funktion wird abgebrochen");
+      return;
+    }
+    if (!currentQuestion) {
+      console.log("handleTrueFalseWithSound - Keine aktuelle Frage vorhanden, Funktion wird abgebrochen");
+      return;
+    }
+
+    console.log("handleTrueFalseWithSound aufgerufen mit isTrue:", isTrue);
+    console.log("Aktueller Zustand vor handleTrueFalseAnswer:", { 
+      isAnimationPlaying, 
+      currentQuestion: currentQuestion.id,
+      showRewardAnimation,
+      lastAnswerCorrect
+    });
+    
+    // Rufe nur handleTrueFalseAnswer auf, das bereits die Animation steuert
+    await handleTrueFalseAnswer(currentQuestion.id, isTrue);
+    
+    console.log("handleTrueFalseWithSound - Nach handleTrueFalseAnswer:", {
+      isAnimationPlaying: useQuizStore.getState().isAnimationPlaying,
+      showRewardAnimation: useQuizStore.getState().showRewardAnimation,
+      lastAnswerCorrect: useQuizStore.getState().lastAnswerCorrect
+    });
+  };
+
+  // Ersetze die Sound-Logik in den onClick-Handlern für Subfragen
+  const handleSubquestionWithSound = async (subId: number, isCorrect: boolean) => {
+    if (!currentQuestion) return;
+    if (isAnimationPlaying) return;
+    
+    // Verarbeite die Unterfrage
+    await handleSubquestionAnswered(subId, isCorrect, currentQuestion.id);
+    
+    // Spiele den Sound ab
+    if (isCorrect) {
+      await playCorrectSound();
+    } else {
+      await playWrongSound();
+    }
+  };
+
   // Rendere Loading State
   if (!user) {
     return (
@@ -173,7 +267,7 @@ export function QuizContainer({
     );
   }
 
-  if (isQuestionsLoading || isLoading) {
+  if (isLoading) {
     return (
       <div className="border border-gray-900 min-h-[600px] flex items-center justify-center">
         <div className="flex flex-col items-center">
@@ -184,15 +278,7 @@ export function QuizContainer({
     );
   }
 
-  if (questionsError) {
-    return (
-      <div className="border border-gray-900 min-h-[600px] flex items-center justify-center text-xl text-red-500">
-        Fehler beim Laden der Fragen: {questionsError.message}
-      </div>
-    );
-  }
-
-  if (!questions || questions.length === 0) {
+  if (questions.length === 0) {
     return <div className="border border-gray-900 min-h-[600px] flex items-center justify-center text-xl">Keine Fragen verfügbar.</div>;
   }
 
@@ -201,15 +287,77 @@ export function QuizContainer({
   }
 
   if (isQuizEnd || currentQuestionIndex >= questions.length) {
+    // Berechne den Prozentsatz der erreichten XP
+    const xpPercentage = possibleRoundXp > 0 ? (roundXp / possibleRoundXp) * 100 : 0;
+    
+    // Bestimme die Medaille basierend auf dem Prozentsatz
+    let medalType = "Keine";
+    if (!showRewardAnimation) {
+      if (xpPercentage >= 100) {
+        medalType = "Gold";
+      } else if (xpPercentage >= 75) {
+        medalType = "Silber";
+      } else if (xpPercentage >= 50) {
+        medalType = "Bronze";
+      }
+
+      // Speichere die Medaille in der Datenbank
+      const saveMedal = async () => {
+        if (!user?.id || medalType === "Keine") return;
+
+        try {
+          // Hole aktuelle Medaillen-Statistik
+          const { data: currentStats } = await supabase
+            .from('user_stats')
+            .select('gold_medals, silver_medals, bronze_medals')
+            .eq('user_id', user.id)
+            .single();
+
+          if (!currentStats) return;
+
+          // Update je nach Medaillentyp
+          const updates: { 
+            gold_medals?: number, 
+            silver_medals?: number, 
+            bronze_medals?: number 
+          } = {};
+
+          if (medalType === "Gold") {
+            updates.gold_medals = (currentStats.gold_medals || 0) + 1;
+          } else if (medalType === "Silber") {
+            updates.silver_medals = (currentStats.silver_medals || 0) + 1;
+          } else if (medalType === "Bronze") {
+            updates.bronze_medals = (currentStats.bronze_medals || 0) + 1;
+          }
+
+          // Aktualisiere die Datenbank
+          const { error } = await supabase
+            .from('user_stats')
+            .update(updates)
+            .eq('user_id', user.id);
+
+          if (error) {
+            console.error('Fehler beim Speichern der Medaille:', error);
+          }
+        } catch (error) {
+          console.error('Fehler beim Speichern der Medaille:', error);
+        }
+      };
+
+      // Rufe die Funktion auf
+      saveMedal();
+    }
+
     return (
       <EndScreen
         roundXp={roundXp}
         roundCoins={roundCoins}
         possibleRoundXp={possibleRoundXp} 
-        medalType={showRewardAnimation ? "Keine" : "Gold"}
+        medalType={medalType}
         showLevelUpAnimation={showLevelUpAnimation}
+        correctAnswers={correctAnswers}
         onRestart={() => {
-          previousQuestion();
+          setCurrentQuestionIndex(0);
           setIsQuizEnd(false);
           setRoundXp(0);
           setRoundCoins(0);
@@ -218,6 +366,18 @@ export function QuizContainer({
           setFiftyFiftyUsed(false);
           setHintUsed(false);
           setShowLevelUpAnimation(false);
+          // Setze alle anderen relevanten States zurück
+          setIsAnswerSubmitted(false);
+          setSelectedAnswer(null);
+          setIsCorrect(null);
+          setShowExplanation(false);
+          setLastAnswerCorrect(null);
+          setUserInputAnswer("");
+          setProgress(0);
+          // Stelle sicher, dass die erste Frage geladen wird
+          if (questions && questions.length > 0) {
+            setCurrentQuestion(questions[0]);
+          }
         }}
         onOpenLeaderboard={onOpenLeaderboard}
         onOpenShop={onOpenShop}
@@ -226,23 +386,52 @@ export function QuizContainer({
     );
   }
 
-  let content: React.ReactNode = null;
-  if (!currentQuestion) {
-    content = <div>Keine Frage verfügbar</div>;
-  } else {
+  const renderQuestion = () => {
+    if (!currentQuestion) return null;
+
     switch (currentQuestion.type) {
-      case "true_false":
-        content = (
-          <div className="flex gap-2">
-            <button
-              onClick={async () => {
-                if (isAnimationPlaying) return;
-                await handleTrueFalseAnswer(true);
-                if (lastAnswerCorrect) {
+      case "lueckentext":
+        return (
+          <LueckentextQuestion
+            questionText={currentQuestion.Frage || currentQuestion.question_text || ""}
+            correctAnswer={currentQuestion["Richtige Antwort"] || currentQuestion.correct_answer || ""}
+            onComplete={async (isCorrect) => {
+              if (isAnimationPlaying) return;
+              
+              // Verarbeite die Antwort im Store
+              const storeResult = await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
+              
+              // Setze die UI-States
+              setLastAnswerCorrect(storeResult);
+              setShowExplanation(true);
+              setIsAnswerSubmitted(true);
+              
+              // Vergebe Punkte und zeige Animation
+              await awardQuestion(currentQuestion.id, storeResult);
+              
+              // Prüfe, ob die Frage bereits beantwortet wurde
+              const isAlreadyAnswered = answeredQuestions.includes(currentQuestion.id);
+              if (!isAlreadyAnswered) {
+                await showRewardAnimationWithSound(storeResult);
+              } else {
+                // WICHTIG: Auch bei bereits beantworteten Fragen den Sound abspielen
+                if (storeResult) {
                   await playCorrectSound();
                 } else {
                   await playWrongSound();
                 }
+              }
+            }}
+            hint={hintUsed ? currentQuestion.Begründung || "" : null}
+          />
+        );
+      case "true_false":
+        return (
+          <div className="flex gap-2">
+            <button
+              onClick={async () => {
+                if (isAnimationPlaying) return;
+                await handleTrueFalseWithSound(true);
               }}
               className="answer-button flex-1 inline-flex items-center justify-center"
               disabled={isAnimationPlaying}
@@ -252,12 +441,7 @@ export function QuizContainer({
             <button
               onClick={async () => {
                 if (isAnimationPlaying) return;
-                await handleTrueFalseAnswer(false);
-                if (lastAnswerCorrect) {
-                  await playCorrectSound();
-                } else {
-                  await playWrongSound();
-                }
+                await handleTrueFalseWithSound(false);
               }}
               className="answer-button flex-1 inline-flex items-center justify-center"
               disabled={isAnimationPlaying}
@@ -266,121 +450,226 @@ export function QuizContainer({
             </button>
           </div>
         );
-        break;
       case "question":
-        content = (
+        return (
           <QuestionComponent
-            question={{ ...currentQuestion, chapter_id: currentQuestion.chapter_id ?? 1 }}
-            onAnswer={async (_selected: string, isCorrect: boolean) => {
+            question={{
+              ...currentQuestion,
+              chapter_id: currentQuestion.chapter_id ?? 1,
+              "Frage": currentQuestion.Frage || currentQuestion.question_text,
+              "Antwort A": currentQuestion["Antwort A"] || undefined,
+              "Antwort B": currentQuestion["Antwort B"] || undefined,
+              "Antwort C": currentQuestion["Antwort C"] || undefined,
+              "Antwort D": currentQuestion["Antwort D"] || undefined,
+              "Richtige Antwort": currentQuestion["Richtige Antwort"] || currentQuestion.correct_answer,
+              "Begründung": currentQuestion.Begründung || (currentQuestion.explanation === null ? undefined : currentQuestion.explanation)
+            }}
+            onAnswer={async (selected: string) => {
               if (isAnimationPlaying) return;
               
-              await handleAnswer(isCorrect);
+              // Überprüfe die Antwort
+              const isCorrect = selected.trim().toLowerCase() === 
+                (currentQuestion["Richtige Antwort"] || currentQuestion.correct_answer || "").trim().toLowerCase();
               
+              // Verarbeite die Antwort zuerst
+              await handleAnswer(currentQuestion.id, selected);
+              await awardQuestion(currentQuestion.id, isCorrect);
+              
+              // Spiele den Sound nur einmal ab, nachdem die Antwort verarbeitet wurde
               if (isCorrect) {
-                await playCorrectSound();
+                playCorrectSound();
               } else {
-                await playWrongSound();
+                playWrongSound();
               }
             }}
           />
         );
-        break;
       case "multiple_choice":
-        content = (
+        return (
           <MultipleChoiceQuestion
             questionId={currentQuestion.id}
             onComplete={async (isCorrect: boolean) => {
               if (isAnimationPlaying) return;
-              await handleAnswer(isCorrect);
-              if (isCorrect) {
-                await playCorrectSound();
-              } else {
-                await playWrongSound();
-              }
+              
+              // Verarbeite die Antwort im Store
+              const storeResult = await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
+              
+              // Setze die UI-States
+              setLastAnswerCorrect(storeResult);
+              setShowExplanation(true);
+              setIsAnswerSubmitted(true);
+              
+              // Vergebe Punkte und zeige Animation
+              await awardQuestion(currentQuestion.id, storeResult);
+              await showRewardAnimationWithSound(storeResult);
             }}
           />
         );
-        break;
       case "drag_drop":
-        content = (
+        return (
           <DragDropQuestion
             questionId={currentQuestion.id}
             onComplete={async (isCorrect: boolean) => {
               if (isAnimationPlaying) return;
-              await handleAnswer(isCorrect);
-              if (isCorrect) {
-                await playCorrectSound();
-              } else {
-                await playWrongSound();
-              }
+              
+              // Verarbeite die Antwort
+              await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
+              
+              // Setze den Status für die Anzeige
+              setLastAnswerCorrect(isCorrect);
+              setShowExplanation(true);
+              
+              // Speichere die Antwort und zeige die Animation
+              await awardQuestion(currentQuestion.id, isCorrect);
+              
+              // Zeige die Animation mit Sound
+              await showRewardAnimationWithSound(isCorrect);
             }}
           />
         );
-        break;
       case "cases":
-        content = (
+        return (
           <CasesQuestion
             question={currentQuestion}
             onSubquestionAnswered={async (subId: number, isCorrect: boolean) => {
               if (isAnimationPlaying) return;
-              await handleSubquestionAnswered(subId, isCorrect);
-              if (isCorrect) {
-                await playCorrectSound();
-              } else {
-                await playWrongSound();
-              }
+              await handleSubquestionWithSound(subId, isCorrect);
             }}
             onComplete={async (result: CasesQuestionResult) => {
               if (isAnimationPlaying) return;
-              await handleAnswer(result.overallCorrect);
-              nextQuestion();
+              setCurrentQuestionIndex(currentQuestionIndex + 1);
+              setShowExplanation(false);
+              setLastAnswerCorrect(null);
+              setUserInputAnswer("");
+              setIsAnswerSubmitted(false);
             }}
           />
         );
-        break;
       case "open_question":
-        content = (
-          <OpenQuestion
-            questionText=""
-            correctAnswer={currentQuestion["Richtige Antwort"] || ""}
-            onCompareAnswer={(text) => {
-              if (isAnimationPlaying) return;
-              handleFinalAnswer(text, user.id);
-            }}
-            onSelfEvaluation={async (isCorrect) => {
-              if (isAnimationPlaying) return;
-              await handleAnswer(isCorrect);
-            }}
-            displayInBlackArea={false}
-          />
-        );
-        break;
-      case "lueckentext":
-        content = (
-            <LueckentextQuestion
-              questionText=""
-            correctAnswer={currentQuestion["Richtige Antwort"] ?? ""}
-            hint={currentQuestion.Begründung}
-              onComplete={async (isCorrect) => {
-                if (isAnimationPlaying) return;
-              await handleAnswer(isCorrect);
-                if (isCorrect) {
-                await playCorrectSound();
-                } else {
-                await playWrongSound();
-                }
-              }}
-            />
-          );
-          break;
-        default:
-          content = (
-            <div className="p-3 text-red-500">
-            Fragetyp "{currentQuestion.type}" wird nicht unterstützt.
+        return (
+          <>
+            {/* Frage im linken Bereich */}
+            <div className="text-xl md:text-2xl font-bold mt-4 md:mt-8 leading-relaxed">
+              {currentQuestion.question_text || currentQuestion.Frage || ""}
             </div>
-          );
-      }
+            
+            {/* Erklärungscontainer wird hier angezeigt, wenn showExplanation true ist */}
+            {showExplanation && (
+              <div className="mt-4 md:mt-8 p-3 md:p-5 bg-gray-800 rounded-md border border-yellow-400">
+                <div className="text-white">
+                  <h3 className="text-lg md:text-xl font-bold mb-2">Vergleiche deine Antwort:</h3>
+                  <div className="mb-3">
+                    <h4 className="font-semibold">Deine Antwort:</h4>
+                    <div className="p-2 bg-gray-700 rounded mt-1">
+                      {userInputAnswer || <em className="text-gray-400">Keine Antwort</em>}
+                    </div>
+                  </div>
+                  <div className="mb-3">
+                    <h4 className="font-semibold">Musterlösung:</h4>
+                    <div className="p-2 bg-gray-700 rounded mt-1">
+                      {currentQuestion["Richtige Antwort"] || currentQuestion.correct_answer || ""}
+                    </div>
+                  </div>
+                  
+                  {/* Bewertungsbuttons */}
+                  <div className="mt-4">
+                    <p className="mb-2 font-medium">Wie bewertest du deine Antwort?</p>
+                    <div className="flex flex-col md:flex-row justify-between gap-2 md:gap-4">
+                      <div className="flex gap-2 md:gap-3">
+                        <button
+                          className={`flex-1 md:flex-none py-2 px-4 md:px-6 rounded font-medium transition-colors flex items-center justify-center gap-2 ${
+                            lastAnswerCorrect === true
+                              ? "bg-green-500 text-white"
+                              : "bg-gray-700 hover:bg-green-500 text-white"
+                          }`}
+                          onClick={async () => {
+                            if (isAnimationPlaying) return;
+                            
+                            // Verarbeite die Antwort im Store
+                            const storeResult = await handleAnswer(currentQuestion.id, "true");
+                            
+                            // Setze die UI-States
+                            setLastAnswerCorrect(storeResult);
+                            setShowExplanation(true);
+                            setIsAnswerSubmitted(true);
+                            
+                            // Vergebe Punkte und zeige Animation
+                            await awardQuestion(currentQuestion.id, storeResult);
+                            await showRewardAnimationWithSound(storeResult);
+                          }}
+                          disabled={lastAnswerCorrect !== null || isAnimationPlaying}
+                        >
+                          <div className="w-5 h-5 md:w-6 md:h-6 bg-green-500 rounded-full flex items-center justify-center">
+                            <svg className="w-3 h-3 md:w-4 md:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                          <span className="text-sm md:text-base">Richtig</span>
+                        </button>
+                        <button
+                          className={`flex-1 md:flex-none py-2 px-4 md:px-6 rounded font-medium transition-colors flex items-center justify-center gap-2 ${
+                            lastAnswerCorrect === false
+                              ? "bg-red-500 text-white"
+                              : "bg-gray-700 hover:bg-red-500 text-white"
+                          }`}
+                          onClick={async () => {
+                            if (isAnimationPlaying) return;
+                            
+                            // Verarbeite die Antwort im Store
+                            const storeResult = await handleAnswer(currentQuestion.id, "false");
+                            
+                            // Setze die UI-States
+                            setLastAnswerCorrect(storeResult);
+                            setShowExplanation(true);
+                            setIsAnswerSubmitted(true);
+                            
+                            // Vergebe Punkte und zeige Animation
+                            await awardQuestion(currentQuestion.id, storeResult);
+                            await showRewardAnimationWithSound(storeResult);
+                          }}
+                          disabled={lastAnswerCorrect !== null || isAnimationPlaying}
+                        >
+                          <div className="w-5 h-5 md:w-6 md:h-6 bg-red-500 rounded-full flex items-center justify-center">
+                            <svg className="w-3 h-3 md:w-4 md:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </div>
+                          <span className="text-sm md:text-base">Falsch</span>
+                        </button>
+                      </div>
+                      
+                      {/* Weiter-Button in der gleichen Reihe auf Mobile */}
+                      {lastAnswerCorrect !== null && (
+                        <button 
+                          onClick={nextQuestion}
+                          disabled={isAnimationPlaying}
+                          className={`flex-1 md:flex-none py-2 px-4 md:px-6 font-medium rounded transition-colors flex items-center justify-center gap-2 ${
+                            isAnimationPlaying 
+                              ? "bg-gray-400 text-gray-700 cursor-not-allowed" 
+                              : "bg-yellow-400 text-black hover:bg-yellow-500"
+                          }`}
+                        >
+                          <span className="text-sm md:text-base">Weiter</span>
+                          <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        );
+      default:
+        return (
+          <div className="p-3 text-red-500">
+            Fragetyp "{currentQuestion.type}" wird nicht unterstützt.
+          </div>
+        );
     }
+  };
 
   // Berechne den Fortschritt für die Fortschrittsanzeige
   const progressPercentage = questions 
@@ -388,60 +677,9 @@ export function QuizContainer({
     : 0;
 
   return (
-    <div className="border-2 border-gray-900 rounded-sm shadow-lg overflow-hidden relative">
-      {/* Kombinierte Belohnungs- und Richtig/Falsch-Animation */}
-      {showRewardAnimation && (
-        <div className="fixed md:absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
-          <motion.div
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1.2, opacity: 1 }}
-            exit={{ scale: 0.5, opacity: 0 }}
-            transition={{ duration: 0.5, ease: "backOut" }}
-            className="flex flex-col items-center gap-4"
-          >
-            {/* Richtig/Falsch Icon */}
-            {lastAnswerCorrect === true ? (
-              <div className="w-16 h-16 md:w-24 md:h-24 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
-                <svg className="w-10 h-10 md:w-16 md:h-16 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-            ) : (
-              <div className="w-16 h-16 md:w-24 md:h-24 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
-                <svg className="w-10 h-10 md:w-16 md:h-16 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
-            )}
-
-            {/* Rewards */}
-            {lastAnswerCorrect && (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="flex flex-col items-center gap-2 bg-white/90 backdrop-blur-sm p-3 rounded-lg shadow-lg"
-              >
-                {rewardXp > 0 && (
-                  <div className="flex items-center gap-2 text-lg md:text-xl font-bold text-yellow-500">
-                    <span className="text-xl md:text-2xl">⭐</span>
-                    +{rewardXp} XP
-                  </div>
-                )}
-                {rewardCoins > 0 && (
-                  <div className="flex items-center gap-2 text-lg md:text-xl font-bold text-yellow-500">
-                    <span className="text-xl md:text-2xl">🪙</span>
-                    +{rewardCoins} Münzen
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </motion.div>
-        </div>
-      )}
-      
+    <div className="border-2 border-gray-900 rounded-sm shadow-lg overflow-hidden relative min-h-[600px]">
       {/* Kopfzeile mit Benutzerinfo und Statistiken */}
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full relative">
         <QuizHeadline 
           user={user}
           profile={profile || { username: null, avatar_url: null }}
@@ -500,14 +738,17 @@ export function QuizContainer({
                 </div>
                 
                 <div className="text-xl md:text-2xl font-bold mt-4 md:mt-8 leading-relaxed">
-                  {currentQuestion?.Frage}
+                  {currentQuestion?.Frage || currentQuestion?.question_text || ""}
                 </div>
+
+                {/* Toast Container */}
+                <div id="toast-container" className="absolute bottom-4 left-4 right-4" style={{ zIndex: 1000 }} />
                 
                 {/* Erklärungscontainer für reguläre Fragen */}
                 {showExplanation && currentQuestion && currentQuestion.type !== "open_question" && (
                   <div className="mt-4 md:mt-8 p-3 md:p-5 bg-gray-800 rounded-md border border-yellow-400">
                     <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-3">
-                      {lastAnswerCorrect === true ? (
+                      {lastAnswerCorrect ? (
                         <div className="w-6 h-6 md:w-8 md:h-8 bg-green-500 rounded-full flex items-center justify-center">
                           <svg className="w-4 h-4 md:w-5 md:h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -521,19 +762,72 @@ export function QuizContainer({
                         </div>
                       )}
                       <h3 className="text-lg md:text-xl font-bold text-white">
-                        {lastAnswerCorrect === true ? "Richtig!" : "Leider falsch"}
+                        {lastAnswerCorrect ? "Richtig!" : "Leider falsch"}
                       </h3>
                     </div>
                     
                     <div className="text-white text-sm md:text-base">
-                      <p className="mb-2 md:mb-3">
-                        <span className="font-semibold">Richtige Antwort:</span> {currentQuestion["Richtige Antwort"]}
-                      </p>
-                      {currentQuestion.Begründung && (
-                        <div>
-                          <span className="font-semibold">Begründung:</span>
-                          <p className="mt-1 md:mt-2">{currentQuestion.Begründung}</p>
-                        </div>
+                      {currentQuestion.type === 'true_false' ? (
+                        <>
+                          <p className="mb-2 md:mb-3">
+                            <span className="font-semibold">Richtige Antwort:</span>{" "}
+                            {["true", "wahr", "1", "ja", "richtig"].includes(
+                              (currentQuestion["Richtige Antwort"] || currentQuestion.correct_answer || "").toLowerCase().trim()
+                            ) ? "Richtig" : "Falsch"}
+                          </p>
+                          {currentQuestion.Begründung && (
+                            <div>
+                              <span className="font-semibold">Begründung:</span>
+                              <p className="mt-1 md:mt-2">{currentQuestion.Begründung}</p>
+                            </div>
+                          )}
+                        </>
+                      ) : currentQuestion.type === 'drag_drop' ? (
+                        <>
+                          {useQuizStore.getState().correctDragDropAnswer && (
+                            <div>
+                              <span className="font-semibold">Richtige Zuordnung:</span>
+                              <pre className="mt-1 md:mt-2 whitespace-pre-wrap font-sans bg-gray-700 p-3 rounded">
+                                {useQuizStore.getState().correctDragDropAnswer}
+                              </pre>
+                            </div>
+                          )}
+                          {currentQuestion.Begründung && (
+                            <div className="mt-3">
+                              <span className="font-semibold">Begründung:</span>
+                              <p className="mt-1 md:mt-2">{currentQuestion.Begründung}</p>
+                            </div>
+                          )}
+                        </>
+                      ) : currentQuestion.type === 'multiple_choice' ? (
+                        <>
+                          {useQuizStore.getState().correctMultipleChoiceAnswer && (
+                            <div>
+                              <span className="font-semibold">Richtige Antworten:</span>
+                              <pre className="mt-1 md:mt-2 whitespace-pre-wrap font-sans bg-gray-700 p-3 rounded">
+                                {useQuizStore.getState().correctMultipleChoiceAnswer}
+                              </pre>
+                            </div>
+                          )}
+                          {currentQuestion.Begründung && (
+                            <div className="mt-3">
+                              <span className="font-semibold">Begründung:</span>
+                              <p className="mt-1 md:mt-2">{currentQuestion.Begründung}</p>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <p className="mb-2 md:mb-3">
+                            <span className="font-semibold">Richtige Antwort:</span> {currentQuestion["Richtige Antwort"] || currentQuestion.correct_answer || ""}
+                          </p>
+                          {currentQuestion.Begründung && (
+                            <div>
+                              <span className="font-semibold">Begründung:</span>
+                              <p className="mt-1 md:mt-2">{currentQuestion.Begründung}</p>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                     
@@ -575,20 +869,30 @@ export function QuizContainer({
                     
                     <div className="mt-4 md:mt-5">
                       <p className="mb-2 font-medium text-white text-sm md:text-base">Wie bewertest du deine Antwort?</p>
-                      <div className="flex flex-col md:flex-row justify-between gap-2 md:gap-0">
+                      <div className="flex flex-col md:flex-row justify-between gap-2 md:gap-4">
                         <div className="flex gap-2 md:gap-3">
                           <button
-                            className={`py-2 px-4 md:px-6 rounded font-medium transition-colors flex items-center gap-2 ${
+                            className={`flex-1 md:flex-none py-2 px-4 md:px-6 rounded font-medium transition-colors flex items-center justify-center gap-2 ${
                               lastAnswerCorrect === true
                                 ? "bg-green-500 text-white"
                                 : "bg-gray-700 hover:bg-green-500 text-white"
                             }`}
                             onClick={async () => {
-                              if (lastAnswerCorrect === null) {
-                                await handleAnswer(true);
-                              }
+                              if (isAnimationPlaying) return;
+                              
+                              // Verarbeite die Antwort im Store
+                              const storeResult = await handleAnswer(currentQuestion.id, "true");
+                              
+                              // Setze die UI-States
+                              setLastAnswerCorrect(storeResult);
+                              setShowExplanation(true);
+                              setIsAnswerSubmitted(true);
+                              
+                              // Vergebe Punkte und zeige Animation
+                              await awardQuestion(currentQuestion.id, storeResult);
+                              await showRewardAnimationWithSound(storeResult);
                             }}
-                            disabled={lastAnswerCorrect !== null}
+                            disabled={lastAnswerCorrect !== null || isAnimationPlaying}
                           >
                             <div className="w-5 h-5 md:w-6 md:h-6 bg-green-500 rounded-full flex items-center justify-center">
                               <svg className="w-3 h-3 md:w-4 md:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -598,17 +902,27 @@ export function QuizContainer({
                             <span className="text-sm md:text-base">Richtig</span>
                           </button>
                           <button
-                            className={`py-2 px-4 md:px-6 rounded font-medium transition-colors flex items-center gap-2 ${
+                            className={`flex-1 md:flex-none py-2 px-4 md:px-6 rounded font-medium transition-colors flex items-center justify-center gap-2 ${
                               lastAnswerCorrect === false
                                 ? "bg-red-500 text-white"
                                 : "bg-gray-700 hover:bg-red-500 text-white"
                             }`}
                             onClick={async () => {
-                              if (lastAnswerCorrect === null) {
-                                await handleAnswer(false);
-                              }
+                              if (isAnimationPlaying) return;
+                              
+                              // Verarbeite die Antwort im Store
+                              const storeResult = await handleAnswer(currentQuestion.id, "false");
+                              
+                              // Setze die UI-States
+                              setLastAnswerCorrect(storeResult);
+                              setShowExplanation(true);
+                              setIsAnswerSubmitted(true);
+                              
+                              // Vergebe Punkte und zeige Animation
+                              await awardQuestion(currentQuestion.id, storeResult);
+                              await showRewardAnimationWithSound(storeResult);
                             }}
-                            disabled={lastAnswerCorrect !== null}
+                            disabled={lastAnswerCorrect !== null || isAnimationPlaying}
                           >
                             <div className="w-5 h-5 md:w-6 md:h-6 bg-red-500 rounded-full flex items-center justify-center">
                               <svg className="w-3 h-3 md:w-4 md:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -619,18 +933,21 @@ export function QuizContainer({
                           </button>
                         </div>
                         
-                        {/* Weiter-Button für OpenQuestion */}
+                        {/* Weiter-Button in der gleichen Reihe auf Mobile */}
                         {lastAnswerCorrect !== null && (
                           <button 
                             onClick={nextQuestion}
                             disabled={isAnimationPlaying}
-                            className={`w-full md:w-auto mt-2 md:mt-0 px-4 md:px-6 py-2 font-medium rounded transition-colors ${
+                            className={`flex-1 md:flex-none py-2 px-4 md:px-6 font-medium rounded transition-colors flex items-center justify-center gap-2 ${
                               isAnimationPlaying 
                                 ? "bg-gray-400 text-gray-700 cursor-not-allowed" 
                                 : "bg-yellow-400 text-black hover:bg-yellow-500"
                             }`}
                           >
-                            Weiter
+                            <span className="text-sm md:text-base">Weiter</span>
+                            <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
                           </button>
                         )}
                       </div>
@@ -645,28 +962,50 @@ export function QuizContainer({
               {/* Container für den Hauptinhalt */}
               <div className="w-full mb-8 md:mb-16">
                 {currentQuestion?.type === "open_question" ? (
-                  <div className="w-full">{content}</div>
+                  <div className="w-full">
+                    <OpenQuestion
+                      questionText=""
+                      correctAnswer={currentQuestion.correct_answer || currentQuestion["Richtige Antwort"] || ""}
+                      onCompareAnswer={(text) => {
+                        if (isAnimationPlaying) return;
+                        handleFinalAnswer(currentQuestion.id, text);
+                      }}
+                      onSelfEvaluation={async (isCorrect) => {
+                        if (isAnimationPlaying) return;
+                        
+                        // Verarbeite die Antwort
+                        await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
+                        await awardQuestion(currentQuestion.id, isCorrect);
+                        
+                        // Zeige die Animation mit Sound
+                        await showRewardAnimationWithSound(isCorrect);
+                      }}
+                      displayInBlackArea={false}
+                    />
+                  </div>
                 ) : currentQuestion?.type === "true_false" ? (
                   <div className="w-full flex flex-col gap-4 md:gap-6">
                     <button
                       onClick={async () => {
-                        await handleTrueFalseAnswer(true);
+                        await handleTrueFalseWithSound(true);
                       }}
                       className="w-full py-4 md:py-5 px-4 md:px-6 border-2 border-black text-black bg-white text-center font-medium text-base md:text-lg rounded-md md:rounded-none hover:bg-gray-100 transition-colors"
+                      disabled={showExplanation || isAnimationPlaying}
                     >
                       Richtig
                     </button>
                     <button
                       onClick={async () => {
-                        await handleTrueFalseAnswer(false);
+                        await handleTrueFalseWithSound(false);
                       }}
                       className="w-full py-4 md:py-5 px-4 md:px-6 border-2 border-black text-black bg-white text-center font-medium text-base md:text-lg rounded-md md:rounded-none hover:bg-gray-100 transition-colors"
+                      disabled={showExplanation || isAnimationPlaying}
                     >
                       Falsch
                     </button>
                   </div>
                 ) : (
-                  <div className="w-full">{content}</div>
+                  <div className="w-full">{renderQuestion()}</div>
                 )}
               </div>
               
@@ -677,10 +1016,10 @@ export function QuizContainer({
                   streakBoostUsed={streakBoostUsed}
                   hintUsed={hintUsed}
                   fiftyFiftyUsed={fiftyFiftyUsed}
-                  handleXpBoostClick={() => toggleJokerPanel(true)}
-                  handleStreakBoostClick={() => toggleJokerPanel(true)}
-                  handleHintClick={() => toggleJokerPanel(true)}
-                  handleFiftyFiftyClick={() => toggleJokerPanel(true)}
+                  handleXpBoostClick={toggleJokerPanel}
+                  handleStreakBoostClick={toggleJokerPanel}
+                  handleHintClick={toggleJokerPanel}
+                  handleFiftyFiftyClick={toggleJokerPanel}
                   disabled={showExplanation}
                 />
               </div>
@@ -688,35 +1027,6 @@ export function QuizContainer({
           </div>
         </div>
       </div>
-
-      {/* Level-Up Animation */}
-      {showLevelUpAnimation && (
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0, opacity: 0 }}
-          className="fixed inset-0 flex items-center justify-center z-50"
-        >
-          <div className="bg-black bg-opacity-50 absolute inset-0" />
-          <motion.div
-            initial={{ y: 50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 50, opacity: 0 }}
-            className="bg-white rounded-lg p-8 relative z-10 text-center"
-          >
-            <h2 className="text-2xl font-bold text-green-600 mb-4">Level Up!</h2>
-            <p className="text-gray-700">Glückwunsch! Du hast ein neues Level erreicht!</p>
-            <button
-              onClick={() => setShowLevelUpAnimation(false)}
-              className="mt-4 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition-colors"
-            >
-              Weiter
-            </button>
-          </motion.div>
-        </motion.div>
-      )}
     </div>
   );
 }
-
-export default QuizContainer;

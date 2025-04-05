@@ -1,162 +1,152 @@
-import { useState, useEffect } from "react";
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
+import { QuizContainer } from "./QuizContainer";
+import { useUserStore } from './store/useUserStore';
+import { useQuizStore } from './store/useQuizStore';
+import { useSoundStore } from './store/useSoundStore';
+import { useAuthStore } from './store/useAuthStore';
 import "./index.css";
 import { LoginScreen } from "./LoginScreen";
-import QuizContainer from "./QuizContainer";
 import ProfileScreen from "./ProfileScreen";
 import ShopScreen from "./ShopScreen";
 import LeaderboardOverlay from "./LeaderboardOverlay";
-import { supabase } from "./supabaseClient";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Toaster } from 'react-hot-toast';
+import { Database } from './types/supabase';
 
-function App() {
-  const [userId, setUserId] = useState<string | null>(null);
-  const [user, setUser] = useState<any>(null);
-  const [activeScreen, setActiveScreen] = useState<
-    "quiz" | "profile" | "shop" | "leaderboard" | "settings"
-  >("quiz");
-  
-  const queryClient = useQueryClient();
+type Profile = Database['public']['Tables']['profiles']['Row'];
+type UserStats = Database['public']['Tables']['user_stats']['Row'];
 
-  const handleLogin = (userId: string) => {
-    setUserId(userId);
-    setActiveScreen("quiz");
-  };
+// Loading-Komponente
+const LoadingScreen = () => (
+  <div className="min-h-screen flex items-center justify-center text-lg">
+    Lade...
+  </div>
+);
 
-  // Session abrufen
-  useEffect(() => {
-    async function getSession() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
+// Error-Komponente
+const ErrorScreen = ({ message }: { message: string }) => (
+  <div className="min-h-screen flex items-center justify-center text-lg text-red-500">
+    Fehler: {message}
+  </div>
+);
+
+// Wrapper-Komponente für die Navigation
+function AppContent() {
+  const navigate = useNavigate();
+  const { user, isLoading: authLoading, initAuth } = useAuthStore();
+  const { loadUserData, profile, userStats, isLoading: userLoading, error } = useUserStore();
+  const { fetchQuestions } = useQuizStore();
+  const { playCorrectSound, playWrongSound } = useSoundStore();
+
+  // Auth initialisieren
+  React.useEffect(() => {
+    initAuth();
+  }, [initAuth]);
+
+  // User-Daten laden wenn sich der User ändert
+  React.useEffect(() => {
+    if (user?.id) {
+      loadUserData(user.id);
     }
-    getSession();
+  }, [user?.id, loadUserData]);
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event: any, session: any) => {
-        setUser(session?.user ?? null);
-      }
-    );
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
+  // Zeige Loading-Screen während Auth initialisiert wird
+  if (authLoading) {
+    return <LoadingScreen />;
+  }
 
-  // Profil laden
-  const {
-    data: profileData,
-    isLoading: profileLoading,
-    error: profileError,
-  } = useQuery({
-    queryKey: ["profile", userId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle();
-      if (error) throw new Error(error.message);
-      return data;
-    },
-    enabled: !!userId,
-  });
-
-  // User-Stats laden
-  const {
-    data: userStatsData,
-    isLoading: statsLoading,
-    error: statsError,
-  } = useQuery({
-    queryKey: ["userStats", userId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("user_stats")
-        .select("*")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (error) throw new Error(error.message);
-      if (!data) return null;
-      return {
-        ...data,
-        total_xp: Number(data.total_xp),
-        total_coins: Number(data.total_coins),
-        gold_medals: Number(data.gold_medals),
-        silver_medals: Number(data.silver_medals),
-        bronze_medals: Number(data.bronze_medals),
-      };
-    },
-    enabled: !!userId,
-  });
-
+  // Zeige Login-Screen wenn kein User vorhanden ist
   if (!user) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return <LoginScreen onLogin={(userId) => loadUserData(userId)} />;
   }
 
-  if (profileLoading || statsLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-lg">
-        Lade Profil und Stats...
-      </div>
-    );
+  // Zeige Loading-Screen während User-Daten geladen werden
+  if (userLoading) {
+    return <LoadingScreen />;
   }
 
-  if (profileError || statsError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-lg text-red-500">
-        Fehler: {(profileError || statsError)?.message}
-      </div>
-    );
+  // Zeige Error-Screen bei Fehlern
+  if (error) {
+    const errorMessage = typeof error === 'object' && error !== null && 'message' in error 
+      ? (error as { message: string }).message 
+      : String(error);
+    return <ErrorScreen message={errorMessage} />;
   }
 
   return (
     <div className="relative min-h-screen w-full">
-      {/* Quiz-Screen */}
-      {activeScreen === "quiz" && (
-        <div className="absolute top-0 left-0 w-full min-h-screen bg-lightBg p-4">
-          <QuizContainer
-            user={user}
-            profile={profileData}
-            userStats={userStatsData}
-            onOpenProfile={() => setActiveScreen("profile")}
-            onOpenShop={() => setActiveScreen("shop")}
-            onOpenLeaderboard={() => setActiveScreen("leaderboard")}
-            onOpenSettings={() => setActiveScreen("settings")}
-          />
-        </div>
-      )}
-
-      {/* Profile-Overlay */}
-      {activeScreen === "profile" && (
-        <div className="absolute top-0 left-0 w-full min-h-screen bg-lightBg p-4">
-          <ProfileScreen
-            onBack={() => setActiveScreen("quiz")}
-            user={user}
-            profile={profileData}
-            userStats={userStatsData}
-          />
-        </div>
-      )}
-
-      {/* Shop-Overlay */}
-      {activeScreen === "shop" && (
-        <div className="absolute top-0 left-0 w-full min-h-screen bg-lightBg p-0 md:p-4">
-          <ShopScreen
-            user={user}
-            onClose={() => setActiveScreen("quiz")}
-            onOpenProfile={() => setActiveScreen("profile")}
-          />
-        </div>
-      )}
-
-      {/* Leaderboard-Overlay */}
-      {activeScreen === "leaderboard" && (
-        <div className="absolute top-0 left-0 w-full min-h-screen bg-lightBg p-4">
-          <LeaderboardOverlay
-            onClose={() => setActiveScreen("quiz")}
-          />
-        </div>
-      )}
+      <Routes>
+        <Route 
+          path="/" 
+          element={
+            <QuizContainer 
+              user={user}
+              profile={profile as Profile}
+              userStats={userStats as UserStats}
+              onOpenProfile={() => navigate("/profile")}
+              onOpenShop={() => navigate("/shop")}
+              onOpenLeaderboard={() => navigate("/leaderboard")}
+              onOpenSettings={() => navigate("/settings")}
+            />
+          } 
+        />
+        <Route 
+          path="/profile" 
+          element={
+            <ProfileScreen
+              onBack={() => navigate("/")}
+              user={user}
+              profile={profile}
+              userStats={userStats}
+            />
+          }
+        />
+        <Route 
+          path="/shop" 
+          element={
+            <ShopScreen
+              user={user}
+              onClose={() => navigate("/")}
+              onOpenProfile={() => navigate("/profile")}
+            />
+          }
+        />
+        <Route 
+          path="/leaderboard" 
+          element={
+            <LeaderboardOverlay
+              onClose={() => navigate("/")}
+            />
+          }
+        />
+      </Routes>
+      <Toaster
+        containerClassName="quiz-toaster-container"
+        toastOptions={{
+          className: 'quiz-toast',
+          position: 'bottom-left',
+          duration: 3000,
+          style: {
+            background: 'rgba(51, 51, 51, 0.9)',
+            color: '#fff',
+            borderRadius: '10px',
+            padding: '16px',
+            fontSize: '14px',
+            maxWidth: '400px',
+            border: '1px solid #ffc107'
+          },
+        }}
+      />
     </div>
+  );
+}
+
+// Haupt-App-Komponente
+function App() {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
   );
 }
 

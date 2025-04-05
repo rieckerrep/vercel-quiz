@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../supabaseClient';
 import { Database } from '../types/supabase';
+import { userService } from '../api/userService';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
@@ -10,14 +11,25 @@ interface UserState {
   userStats: UserStats | null;
   isLoading: boolean;
   error: string | null;
+  
+  // Lade-Funktionen
+  loadUserData: (userId: string) => Promise<void>;
   fetchProfile: (userId: string) => Promise<void>;
   fetchUserStats: (userId: string) => Promise<void>;
-  updateUserStats: (userId: string, updates: Partial<UserStats>) => Promise<void>;
-  incrementQuestionsAnswered: (userId: string) => Promise<void>;
-  incrementCorrectAnswers: (userId: string) => Promise<boolean>;
-  addXP: (userId: string, amount: number) => Promise<boolean>;
-  addCoins: (userId: string, amount: number) => Promise<void>;
-  checkLevelUp: (userId: string, newXP: number) => Promise<boolean>;
+  
+  // Update-Funktionen
+  updateUserStats: (stats: Partial<UserStats>) => Promise<void>;
+  incrementAnsweredQuestions: () => Promise<void>;
+  incrementCorrectAnswers: () => Promise<void>;
+  addXp: (amount: number) => Promise<void>;
+  addCoins: (amount: number) => Promise<void>;
+  checkLevelUp: () => Promise<boolean>;
+  totalXp: number;
+  totalCoins: number;
+  setTotalXp: (xp: number) => void;
+  setTotalCoins: (coins: number) => void;
+  addToTotalXp: (xp: number) => void;
+  addToTotalCoins: (coins: number) => void;
 }
 
 export const useUserStore = create<UserState>((set, get) => ({
@@ -25,10 +37,56 @@ export const useUserStore = create<UserState>((set, get) => ({
   userStats: null,
   isLoading: false,
   error: null,
+  totalXp: 0,
+  totalCoins: 0,
+  setTotalXp: (xp: number) => set({ totalXp: xp }),
+  setTotalCoins: (coins: number) => set({ totalCoins: coins }),
+  addToTotalXp: (xp: number) => set(state => ({ totalXp: state.totalXp + xp })),
+  addToTotalCoins: (coins: number) => set(state => ({ totalCoins: state.totalCoins + coins })),
+
+  loadUserData: async (userId: string) => {
+    const state = get();
+    // Wenn bereits Daten geladen werden, nicht erneut laden
+    if (state.isLoading) return;
+    
+    // Wenn bereits Daten vorhanden sind und kein Fehler existiert, nicht erneut laden
+    if (state.profile && state.userStats && !state.error) return;
+
+    set({ isLoading: true, error: null });
+    try {
+      // Profil laden
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (profileError) throw profileError;
+      
+      // Statistiken laden
+      const { data: userStats, error: statsError } = await userService.fetchUserStats(userId);
+      if (statsError) throw statsError;
+      
+      // Alle Daten auf einmal setzen
+      set({ 
+        profile: profileData,
+        userStats,
+        totalXp: userStats?.total_xp || 0,
+        totalCoins: userStats?.total_coins || 0,
+        error: null,
+        isLoading: false
+      });
+    } catch (error) {
+      console.error('Fehler beim Laden der Benutzerdaten:', error);
+      set({ 
+        error: error instanceof Error ? error.message : 'Fehler beim Laden der Benutzerdaten',
+        isLoading: false 
+      });
+    }
+  },
 
   fetchProfile: async (userId: string) => {
     try {
-      set({ isLoading: true, error: null });
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -38,15 +96,12 @@ export const useUserStore = create<UserState>((set, get) => ({
       if (error) throw error;
       set({ profile: data });
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : 'Ein Fehler ist aufgetreten' });
-    } finally {
-      set({ isLoading: false });
+      set({ error: error instanceof Error ? error.message : 'Fehler beim Laden des Profils' });
     }
   },
 
   fetchUserStats: async (userId: string) => {
     try {
-      set({ isLoading: true, error: null });
       const { data, error } = await supabase
         .from('user_stats')
         .select('*')
@@ -56,141 +111,79 @@ export const useUserStore = create<UserState>((set, get) => ({
       if (error) throw error;
       set({ userStats: data });
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : 'Ein Fehler ist aufgetreten' });
-    } finally {
-      set({ isLoading: false });
+      set({ error: error instanceof Error ? error.message : 'Fehler beim Laden der Statistiken' });
     }
   },
 
-  updateUserStats: async (userId: string, updates: Partial<UserStats>) => {
-    try {
-      set({ isLoading: true, error: null });
-      const { data, error } = await supabase
-        .from('user_stats')
-        .update({
-          ...updates,
-          last_played: new Date().toISOString()
-        })
-        .eq('user_id', userId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      set({ userStats: data });
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : 'Ein Fehler ist aufgetreten' });
-    } finally {
-      set({ isLoading: false });
-    }
-  },
-
-  incrementQuestionsAnswered: async (userId: string) => {
+  updateUserStats: async (stats: Partial<UserStats>) => {
     const { userStats } = get();
     if (!userStats) return;
 
-    await get().updateUserStats(userId, {
+    try {
+      const { error } = await supabase
+        .from('user_stats')
+        .update(stats)
+        .eq('user_id', userStats.user_id);
+
+      if (error) throw error;
+      set({ userStats: { ...userStats, ...stats } });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Fehler beim Aktualisieren der Statistiken' });
+    }
+  },
+
+  incrementAnsweredQuestions: async () => {
+    const { userStats } = get();
+    if (!userStats) return;
+
+    await get().updateUserStats({
       questions_answered: (userStats.questions_answered || 0) + 1
     });
   },
 
-  incrementCorrectAnswers: async (userId: string) => {
-    const { userStats } = get();
-    if (!userStats) return false;
-
-    const newCorrectAnswers = (userStats.correct_answers || 0) + 1;
-    const newXP = (userStats.total_xp || 0) + 10;
-
-    // Aktualisiere die Statistiken
-    const { error } = await supabase
-      .from('user_stats')
-      .update({
-        correct_answers: newCorrectAnswers,
-        total_xp: newXP
-      })
-      .eq('user_id', userId);
-
-    if (error) {
-      console.error('Fehler beim Aktualisieren der Statistiken:', error);
-      return false;
-    }
-
-    // Aktualisiere den lokalen State
-    set(state => ({
-      userStats: state.userStats ? {
-        ...state.userStats,
-        correct_answers: newCorrectAnswers,
-        total_xp: newXP
-      } : null
-    }));
-
-    // Prüfe auf Level-Up
-    return await get().checkLevelUp(userId, newXP);
-  },
-
-  addXP: async (userId: string, amount: number) => {
-    const { userStats } = get();
-    if (!userStats) return false;
-
-    const newXP = (userStats.total_xp || 0) + amount;
-    
-    // Aktualisiere XP in der Datenbank
-    const { error } = await supabase
-      .from('user_stats')
-      .update({ total_xp: newXP })
-      .eq('user_id', userId);
-
-    if (error) {
-      console.error('Fehler beim Aktualisieren der XP:', error);
-      return false;
-    }
-
-    // Aktualisiere den lokalen State
-    set(state => ({
-      userStats: state.userStats ? { ...state.userStats, total_xp: newXP } : null
-    }));
-
-    // Prüfe auf Level-Up
-    return await get().checkLevelUp(userId, newXP);
-  },
-
-  addCoins: async (userId: string, amount: number) => {
+  incrementCorrectAnswers: async () => {
     const { userStats } = get();
     if (!userStats) return;
 
-    await get().updateUserStats(userId, {
-      total_coins: Math.max(0, (userStats.total_coins || 0) + amount)
+    await get().updateUserStats({
+      correct_answers: (userStats.correct_answers || 0) + 1
     });
   },
 
-  checkLevelUp: async (userId: string, newXP: number) => {
+  addXp: async (amount: number) => {
+    const { userStats } = get();
+    if (!userStats) return;
+
+    await get().updateUserStats({
+      total_xp: (userStats.total_xp || 0) + amount
+    });
+
+    await get().checkLevelUp();
+  },
+
+  addCoins: async (amount: number) => {
+    const { userStats } = get();
+    if (!userStats) return;
+
+    await get().updateUserStats({
+      total_coins: (userStats.total_coins || 0) + amount
+    });
+  },
+
+  checkLevelUp: async () => {
     const { userStats } = get();
     if (!userStats || userStats.total_xp === null) return false;
 
-    // Berechne das aktuelle Level basierend auf XP
-    const currentLevel = Math.floor(Math.sqrt(userStats.total_xp / 100));
-    const newLevel = Math.floor(Math.sqrt(newXP / 100));
+    const currentLevel = userStats.level || 1;
+    const xpForNextLevel = currentLevel * 1000;
 
-    // Wenn das Level gestiegen ist
-    if (newLevel > currentLevel) {
-      // Aktualisiere das Level in der Datenbank
-      const { error } = await supabase
-        .from('user_stats')
-        .update({ level: newLevel })
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Fehler beim Aktualisieren des Levels:', error);
-        return false;
-      }
-
-      // Aktualisiere den lokalen State
-      set(state => ({
-        userStats: state.userStats ? { ...state.userStats, level: newLevel } : null
-      }));
-
+    if (userStats.total_xp >= xpForNextLevel) {
+      await get().updateUserStats({
+        level: currentLevel + 1,
+        total_coins: (userStats.total_coins || 0) + 100 // Bonus-Münzen für Level-Up
+      });
       return true;
     }
-
     return false;
   }
 })); 

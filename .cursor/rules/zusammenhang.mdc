@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Wenn du Code schreibst, dann schaue wie die Funktionen in [supabase.ts](mdc:src/types/supabase.ts) aufgebaut sind.
+Schaue auch das die Calls im Ordner [apiClient.ts](mdc:src/api/apiClient.ts) [authService.ts](mdc:src/api/authService.ts) [quizService.ts](mdc:src/api/quizService.ts) [shopService.ts](mdc:src/api/shopService.ts) [userService.ts](mdc:src/api/userService.ts) dahingehend entsprechend funktionieren.
+
+Der Code ist mittlerweile ziemlich Komplex geworden, IMMER wenn ich dir eine Nachricht schicke, möchte ich, dass du dir einen Überblick über den Code-Fluss verschaffst und den GANZEN Code überprüfst.

@@ -3,6 +3,8 @@ import React, { useEffect, useState, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import { motion } from "framer-motion";
 import "./LoginScreen.css";
+import { authService } from "./api/authService";
+import { Database } from "./types/supabase";
 
 interface LoginScreenProps {
   onLogin: (userId: string) => void;
@@ -24,23 +26,25 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   // Audio
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Unis laden
+  // Lade Universitäten beim Start
   useEffect(() => {
-    const fetchUnis = async () => {
-      const { data, error } = await supabase
-        .from("universities")
-        .select("name")
-        .order("name", { ascending: true });
-      if (error) {
-        console.error("Fehler beim Laden der Unis:", error.message);
-      } else if (data) {
-        setUniversities(data.map((u: any) => u.name));
-        if (data.length > 0) {
-          setSelectedUniversity(data[0].name);
+    async function loadUniversities() {
+      try {
+        const { data, error } = await authService.fetchUniversities();
+        if (error) {
+          console.error("Fehler beim Laden der Universitäten:", error);
+          return;
         }
+        
+        if (data) {
+          setUniversities(data.map(uni => uni.name));
+        }
+      } catch (err) {
+        console.error("Fehler beim Laden der Universitäten:", err);
       }
-    };
-    fetchUnis();
+    }
+    
+    loadUniversities();
   }, []);
 
   // Sound abspielen
@@ -54,18 +58,18 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   };
 
   // ---------------------
-  // 1) Registrieren
+  // 1) Registrierung
   // ---------------------
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!username || !email || !password || !selectedUniversity) {
+    if (!email || !password || !username || !selectedUniversity) {
       setError("❗ Bitte alle Felder ausfüllen!");
       return;
     }
     try {
-      // Gibt es den Username schon?
-      const { data: existingUser } = await supabase
+      // Prüfe, ob Benutzername bereits existiert
+      const { data: existingUser, error: existingError } = await supabase
         .from("profiles")
         .select("username")
         .eq("username", username);
@@ -74,47 +78,25 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         setError("❗ Benutzername bereits vergeben!");
         return;
       }
-      // Auth signUp
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      
+      // Registrierung mit authService
+      const { data, error } = await authService.register(email, password, username, selectedUniversity);
+      
       if (error) {
         setError("❌ Registrierung fehlgeschlagen: " + error.message);
         return;
       }
+      
       if (!data?.user) {
         setError("❌ Registrierung fehlgeschlagen: Kein user Objekt.");
         return;
       }
+      
       // Sound / Nachricht
       setMessage("✅ Registrierung erfolgreich! Bitte bestätige deine E-Mail.");
       playSound();
 
-      // In 'profiles' eintragen
-      const userId = data.user.id;
-      const { error: profileError } = await supabase.from("profiles").insert([
-        {
-          id: userId,
-          username,
-          university: selectedUniversity,
-          created_at: new Date(),
-        },
-      ]);
-      if (profileError) {
-        console.error("Fehler bei Eintrag in profiles:", profileError.message);
-      }
-
-      const { error: statsError } = await supabase
-        .from("user_stats")
-        .insert([
-          {
-            user_id: userId,
-            total_xp: 0,
-            total_coins: 0,
-          },
-        ]);
-
-      if (statsError) throw statsError;
-
-      onLogin(userId);
+      onLogin(data.user.id);
     } catch (err: any) {
       console.error("Registrierung Fehler:", err);
       setError("❌ Registrierung fehlgeschlagen.");
@@ -132,14 +114,14 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       return;
     }
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data, error } = await authService.login(email, password);
+      
       if (error) {
         setError("❌ Login fehlgeschlagen: " + error.message);
-      } else {
+      } else if (data && data.user) {
         onLogin(data.user.id);
+      } else {
+        setError("❌ Login fehlgeschlagen: Keine Benutzerdaten erhalten.");
       }
     } catch (err: any) {
       console.error("Login - Fehler:", err);
@@ -152,15 +134,17 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   // ---------------------
   const handleOAuthLogin = async (provider: "google" | "facebook") => {
     setMessage("");
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: window.location.origin },
-    });
-    if (error) {
-      setMessage("❌ " + provider + " Login fehlgeschlagen: " + error.message);
-    } else {
-      setMessage("Bitte warte, du wirst weitergeleitet...");
-      console.log("OAuth data:", data);
+    try {
+      const { data, error } = await authService.socialLogin(provider);
+      
+      if (error) {
+        setMessage("❌ " + provider + " Login fehlgeschlagen: " + error.message);
+      } else if (data && data.user) {
+        onLogin(data.user.id);
+      }
+    } catch (err: any) {
+      console.error("OAuth Login Fehler:", err);
+      setMessage("❌ " + provider + " Login fehlgeschlagen.");
     }
   };
 
