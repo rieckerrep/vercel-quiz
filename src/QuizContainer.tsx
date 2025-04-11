@@ -1,5 +1,5 @@
 // QuizContainer.tsx
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { supabase } from "./lib/supabaseClient";
 import QuizHeadline from "./QuizHeadline";
 import JokerPanel from "./JokerPanel";
@@ -21,12 +21,13 @@ import { userService } from "./api/userService";
 import { quizService } from "./api/quizService";
 import { Question } from "./store/useQuizStore";
 import { useQuizData } from "./hooks/quiz/useQuizData";
+import { User } from '@supabase/supabase-js';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
 
 interface QuizContainerProps {
-  user: any; // Auth user type from Supabase
+  user: User | null;
   profile: Profile;
   userStats: UserStats;
   onOpenProfile: () => void;
@@ -44,9 +45,10 @@ export function QuizContainer({
   onOpenSettings,
 }: QuizContainerProps) {
   const chapterId = 1;
+  const userId = useMemo(() => user?.id || '', [user?.id]);
   const { playCorrectSound, playWrongSound } = useSoundStore();
   const { addXp, addCoins, incrementAnsweredQuestions, incrementCorrectAnswers, fetchUserStats } = useUserStore();
-  const { submitAnswer } = useQuizData(chapterId, user?.id || '');
+  const { submitAnswer } = useQuizData(chapterId, userId);
 
   // Zustand Store
   const {
@@ -184,20 +186,20 @@ export function QuizContainer({
 
   // Aktualisiere die Benutzerdaten, wenn sich XP oder Münzen ändern
   useEffect(() => {
-    if (user?.id) {
-      fetchUserStats(user.id);
+    if (userId) {
+      fetchUserStats(userId);
     }
-  }, [user?.id, roundXp, roundCoins, fetchUserStats]);
+  }, [userId, roundXp, roundCoins, fetchUserStats]);
 
   // Ersetze die Sound-Logik in den onClick-Handlern
   const handleAnswerWithSound = async (isCorrect: boolean) => {
-    if (!currentQuestion || !user?.id) return;
+    if (!currentQuestion || !userId) return;
     if (isAnimationPlaying) return;
     
     try {
       // Speichere die Antwort in der Datenbank
       await submitAnswer({
-        userId: user.id,
+        userId,
         questionId: currentQuestion.id,
         selectedOption: isCorrect ? "true" : "false",
         isCorrect,
@@ -217,13 +219,13 @@ export function QuizContainer({
 
   // Ersetze die Sound-Logik in den onClick-Handlern für true/false Fragen
   const handleTrueFalseWithSound = async (isTrue: boolean) => {
-    if (!currentQuestion || !user?.id) return;
+    if (!currentQuestion || !userId) return;
     if (isAnimationPlaying) return;
 
     try {
       // Speichere die Antwort
       await submitAnswer({
-        userId: user.id,
+        userId,
         questionId: currentQuestion.id,
         selectedOption: isTrue ? "true" : "false",
         isCorrect: isTrue,
@@ -239,7 +241,7 @@ export function QuizContainer({
 
   // Ersetze die Sound-Logik in den onClick-Handlern für Subfragen
   const handleSubquestionWithSound = async (subId: number, isCorrect: boolean) => {
-    if (!currentQuestion || !user?.id) return;
+    if (!currentQuestion || !userId) return;
     if (isAnimationPlaying) return;
     
     try {

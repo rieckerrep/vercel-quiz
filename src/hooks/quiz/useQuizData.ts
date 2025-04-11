@@ -51,8 +51,8 @@ export const useQuestions = (chapterId: number) => {
     staleTime: 5 * 60 * 1000, // 5 Minuten
     gcTime: 60 * 60 * 1000, // 1 Stunde
     refetchOnWindowFocus: false,
-    retry: 2, // Maximal 2 Wiederholungsversuche bei Fehlern
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000) // Exponentielles Backoff
+    retry: 2,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000)
   });
 };
 
@@ -73,6 +73,9 @@ export const useAnsweredQuestions = (userId: string) => {
         answered_at: answer.answered_at || new Date().toISOString()
       }));
     },
+    staleTime: 2 * 60 * 1000, // 2 Minuten
+    gcTime: 30 * 60 * 1000, // 30 Minuten
+    refetchOnWindowFocus: true
   });
 };
 
@@ -152,7 +155,7 @@ export const useSaveSubAnswer = () => {
       if (error) throw error;
     },
     onSuccess: (_, { userId, chapterId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.answeredSubQuestionsByUser(userId, chapterId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.answeredSubQuestionsByUser(userId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.quizProgress(userId) });
     }
   });
@@ -200,7 +203,7 @@ export const useCompleteQuiz = () => {
     onSuccess: (_, { userId, chapterId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.userStatsByUser(userId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.quizProgress(userId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.answeredQuestionsByUser(userId, chapterId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.answeredQuestionsByUser(userId) });
     }
   });
 };
@@ -419,7 +422,7 @@ export const useQuizData = (chapterId: number, userId: string) => {
 
   // Benutzerstatistiken abrufen
   const { data: userStats } = useQuery({
-    queryKey: [queryKeys.userStats, userId],
+    queryKey: queryKeys.userStatsByUser(userId),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('user_stats')
@@ -561,15 +564,9 @@ export const usePrefetchNextQuestions = (currentChapterId: number) => {
           .eq('chapter_id', nextChapterId)
           .order('id', { ascending: true });
 
-        if (error) {
-          console.error('Fehler beim Prefetchen der Fragen:', error);
-          return []; // Leeres Array zurückgeben statt Fehler zu werfen
-        }
-        
-        return data || [];
-      },
-      staleTime: 5 * 60 * 1000,
-      gcTime: 60 * 60 * 1000
+        if (error) throw error;
+        return data as Question[];
+      }
     });
   }, [currentChapterId, queryClient]);
-}; 
+};
