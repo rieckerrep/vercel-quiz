@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Der ganze Code ist bisher schon vorhanden. Es geht um eine Migration in /src
+
+Überprüfe immer voher, ob die Datei nicht schon vorhanden ist.

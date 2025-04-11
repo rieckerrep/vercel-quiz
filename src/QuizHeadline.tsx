@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { supabase } from "./supabaseClient";
+import { supabase } from "./lib/supabaseClient";
 import { useUserStore } from "./store/useUserStore";
 
 interface QuizHeadlineProps {

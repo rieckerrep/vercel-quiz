@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { supabase } from "./supabaseClient";
-import { Database } from "./types/supabase";
+import { supabase } from "./lib/supabaseClient";
+import { Database } from "./lib/supabase";
 
 type Question = Database['public']['Tables']['questions']['Row'];
 

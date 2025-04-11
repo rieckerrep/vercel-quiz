@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import "./ProfileScreen.css";
-import { supabase } from "./supabaseClient";
+import { supabase } from "./lib/supabaseClient";
 import { userService } from "./api/userService";
 import { authService } from "./api/authService";
-import { Database } from "./types/supabase";
+import { Database } from "./lib/supabase";
 
 /** Datenstrukturen **/
 interface Profile {

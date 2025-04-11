@@ -1,12 +1,13 @@
 import { create } from 'zustand';
+import { QuizAnswerInsert, QuizProgress, QuizRewards, QuizAnimations } from '../../types/quiz';
 
 export type QuizEvent = 
-  | { type: 'ANSWER_SUBMITTED'; payload: { question_id: number; user_id: string; is_correct: boolean; answered_at: string } }
+  | { type: 'ANSWER_SUBMITTED'; payload: QuizAnswerInsert }
   | { type: 'SUB_ANSWER_SUBMITTED'; payload: { subQuestionId: number; isCorrect: boolean; timestamp: string } }
   | { type: 'QUIZ_COMPLETED'; payload: { userId: string; chapterId: number; timestamp: string } }
-  | { type: 'PROGRESS_UPDATED'; payload: { currentIndex: number; totalQuestions: number; correctAnswers: number; wrongAnswers: number; streak: number; maxStreak: number } }
-  | { type: 'REWARDS_UPDATED'; payload: { xp: number; coins: number; possibleXp: number; showAnimation: boolean; isAnimationPlaying: boolean } }
-  | { type: 'ANIMATION_STARTED'; payload: { showReward: boolean; showLevelUp: boolean; isPlaying: boolean } }
+  | { type: 'PROGRESS_UPDATED'; payload: QuizProgress }
+  | { type: 'REWARDS_UPDATED'; payload: QuizRewards }
+  | { type: 'ANIMATION_STARTED'; payload: QuizAnimations }
   | { type: 'ANIMATION_ENDED' };
 
 interface QuizEventBus {

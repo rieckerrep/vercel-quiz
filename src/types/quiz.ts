@@ -1,20 +1,23 @@
-import type { Database } from './supabase';
+import { Database } from '@/lib/supabase';
 
 // Basis-Typen aus der Datenbank
 export type Question = Database['public']['Tables']['questions']['Row'];
 export type SubQuestion = Database['public']['Tables']['cases_subquestions']['Row'];
-export type UserAnswer = Database['public']['Tables']['answered_questions']['Row'];
+export type Answer = Database['public']['Tables']['answered_questions']['Row'];
 export type UserSubQuestionAnswer = Database['public']['Tables']['answered_cases_subquestions']['Row'];
 export type UserStats = Database['public']['Tables']['user_stats']['Row'];
 
 // Gemeinsame Quiz-Typen
-export interface QuizAnswer {
-  id: number;
+export type QuizAnswer = Answer;
+
+// Definiere einen strikteren Typ für das Einfügen von Antworten
+export type QuizAnswerInsert = {
   question_id: number;
   user_id: string;
   is_correct: boolean;
   answered_at: string;
-}
+  chapter_id: number;
+};
 
 export interface QuizSubAnswer {
   subQuestionId: number;
@@ -113,11 +116,11 @@ export interface QuizContextType {
   // Fragen und Antworten
   questions: Question[];
   subQuestions: SubQuestion[];
-  answeredQuestions: UserAnswer[];
+  answeredQuestions: Answer[];
   answeredSubQuestions: UserSubQuestionAnswer[];
   
   // Mutations
-  saveAnswer: (answer: Omit<UserAnswer, 'id' | 'answered_at'>) => Promise<UserAnswer>;
+  saveAnswer: (answer: Omit<Answer, 'id' | 'answered_at'>) => Promise<Answer>;
   
   // Fehler
   questionsError: Error | null;
@@ -125,4 +128,12 @@ export interface QuizContextType {
 
   // Hilfsfunktionen
   isQuestionAnswered: (questionId: number) => boolean;
-} 
+}
+
+export type AnsweredSubQuestion = {
+  id: number;
+  sub_question_id: number;
+  user_id: string;
+  is_correct: boolean;
+  answered_at: string;
+}; 

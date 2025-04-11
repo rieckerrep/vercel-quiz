@@ -2,8 +2,14 @@ import { Database } from '@/lib/supabase';
 
 export type Question = Database['public']['Tables']['questions']['Row'];
 export type SubQuestion = Database['public']['Tables']['cases_subquestions']['Row'];
-export type Answer = Database['public']['Tables']['answered_questions']['Row'] & {
-  question_id: number; // Überschreibe den Typ, um null auszuschließen
+export type Answer = Database['public']['Tables']['answered_questions']['Row'];
+export type QuizAnswer = Omit<Answer, 'id'>;
+export type QuizAnswerInsert = {
+  question_id: number;
+  user_id: string;
+  is_correct: boolean;
+  answered_at: string;
+  chapter_id: number;
 };
 export type SubAnswer = Database['public']['Tables']['answered_cases_subquestions']['Row'];
 export type QuizProgress = Database['public']['Tables']['user_stats']['Row'];

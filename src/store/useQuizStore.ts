@@ -333,13 +333,13 @@ export const useQuizStore = create<QuizState>((set, get) => {
             type: q.type || "",
             question_text: q.Frage || "",
             correct_answer: q["Richtige Antwort"] || "",
-            explanation: q.Begründung,
+            explanation: q.Begruendung,
             chapter_id: q.chapter_id,
             "Antwort A": q["Antwort A"],
             "Antwort B": q["Antwort B"],
             "Antwort C": q["Antwort C"],
             "Antwort D": q["Antwort D"],
-            Begründung: q.Begründung,
+            Begruendung: q.Begruendung,
             Frage: q.Frage,
             "Richtige Antwort": q["Richtige Antwort"]
           }));
@@ -1129,13 +1129,13 @@ export const useQuizStore = create<QuizState>((set, get) => {
           type: q.type || "",
           question_text: q.Frage || "",
           correct_answer: q["Richtige Antwort"] || "",
-          explanation: q.Begründung,
+          explanation: q.Begruendung,
           chapter_id: q.chapter_id,
           "Antwort A": q["Antwort A"],
           "Antwort B": q["Antwort B"],
           "Antwort C": q["Antwort C"],
           "Antwort D": q["Antwort D"],
-          Begründung: q.Begründung,
+          Begruendung: q.Begruendung,
           Frage: q.Frage,
           "Richtige Antwort": q["Richtige Antwort"]
         }));
@@ -1171,7 +1171,7 @@ export const useQuizStore = create<QuizState>((set, get) => {
       switch (event.type) {
         case 'ANSWER_SUBMITTED':
           set(state => ({
-            answeredQuestions: [...state.answeredQuestions, event.payload.question_id]
+            answeredQuestions: [...state.answeredQuestions, event.payload.question_id].filter((id): id is number => id !== null)
           }));
           break;
         case 'SUB_ANSWER_SUBMITTED':
@@ -1270,30 +1270,37 @@ export const useQuizStore = create<QuizState>((set, get) => {
     },
 
     // Neue Funktionen aus useQuizData
-    saveAnswer: async (questionId, isCorrect, userId) => {
+    saveAnswer: async (questionId: number, isCorrect: boolean, userId: string) => {
+      const state = get();
+      const question = state.questions.find(q => q.id === questionId);
+      
+      if (!question) {
+        console.error('Frage nicht gefunden');
+        return;
+      }
+
       try {
+        const answerData = {
+          question_id: questionId,
+          user_id: userId,
+          is_correct: isCorrect,
+          answered_at: new Date().toISOString(),
+          chapter_id: question.chapter_id || 1 // Standardwert 1, falls nicht definiert
+        };
+
         const { error } = await supabase
           .from('answered_questions')
-          .insert({
-            question_id: questionId,
-            user_id: userId,
-            is_correct: isCorrect,
-            answered_at: new Date().toISOString()
-          });
+          .insert(answerData);
 
         if (error) throw error;
 
-        // Event auslösen
+        // Event-Emission
         const eventBus = useQuizEventBus.getState();
         eventBus.emit({
           type: 'ANSWER_SUBMITTED',
-          payload: {
-            question_id: questionId,
-            user_id: userId,
-            is_correct: isCorrect,
-            answered_at: new Date().toISOString()
-          }
+          payload: answerData
         });
+
       } catch (error) {
         console.error('Fehler beim Speichern der Antwort:', error);
       }

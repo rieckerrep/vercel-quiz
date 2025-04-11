@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "./supabaseClient";
+import { supabase } from "./lib/supabaseClient";
 import { motion } from "framer-motion";
 import { goldMedal, silverMedal, bronzeMedal, scaleIcon } from "./assets/images";
 import "./EndScreen.css";

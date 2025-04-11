@@ -1,6 +1,6 @@
 // src/components/UniversityLeaderboard.tsx
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "./supabaseClient";
+import { supabase } from "./lib/supabaseClient";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 

@@ -11,7 +11,7 @@ import ProfileScreen from "./ProfileScreen";
 import ShopScreen from "./ShopScreen";
 import LeaderboardOverlay from "./LeaderboardOverlay";
 import { Toaster } from 'react-hot-toast';
-import { Database } from './types/supabase';
+import { Database } from './lib/supabase';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];

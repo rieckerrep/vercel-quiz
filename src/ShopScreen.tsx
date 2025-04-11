@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import "./ShopScreen.css";
-import { supabase } from "./supabaseClient";
+import { supabase } from "./lib/supabaseClient";
 import { useUserStore } from "./store/useUserStore";
 import { useQuizStore } from "./store/useQuizStore";
 import { shopService } from "./api/shopService";
-import { Database } from "./types/supabase";
+import { Database } from "./lib/supabase";
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];

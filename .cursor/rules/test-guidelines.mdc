@@ -1,0 +1,49 @@
+# Test Guidelines for Cursor
+
+## Allgemeine Regeln
+
+1. **Nutze ausschließlich die bestehenden Funktionen im Projekt.**
+   - Erfinde keine neuen Service-Funktionen oder API-Endpunkte.
+   - Halte dich strikt an die vorhandene Code-Struktur.
+
+2. **Beachte die Supabase-Datenbankstruktur.**
+   - Die Mock-Daten müssen exakt der Supabase-Datenbank entsprechen.
+   - Verwende für Tests nur realistische Daten entsprechend der Tabellenstruktur (siehe `@supabase.ts`).
+
+3. **Spezifische Tests für Typen schreiben.**
+   - Achte darauf, dass alle Typen exakt geprüft werden (z. B. `Question`, `Subquestion`, `UserStats` etc.).
+   - Unklare oder generische Tests wie `expect(result).toBeDefined()` sind zu vermeiden.
+
+4. **Teste Leaderboard-Funktionen explizit.**
+   - Erstelle eigene Testfälle für:
+     - XP-Vergleiche
+     - Ligapositionen
+     - Münzen
+     - Medaillenlogik
+   - Beachte, dass Nutzer nicht mehrfach XP durch Replay farmen dürfen.
+
+5. **Fehlerbehandlung testen.**
+   - Nicht nur `success`-Fälle prüfen, sondern auch typische Fehlerpfade abdecken:
+     - Keine Daten vorhanden
+     - Fehler beim `supabase.from().select()`
+     - Ungültige Parameter
+
+---
+
+## React Query – Perspektivische Umstellung
+
+⚠️ Geplant ist, den Code mittelfristig auf **React Query** umzustellen. Bitte beachte das auch bei der Teststruktur:
+
+- **Keine harte Kopplung an Zustand oder `useEffect`-basierte Logik.**
+- Fokus liegt auf der Datenverarbeitung in Services, nicht auf UI-Verhalten.
+- Tests sollen weiterhin modular und unabhängig von der konkreten Implementierung funktionieren.
+- Stelle sicher, dass API-Antworten und Fehler auch in einem React Query Kontext valide testbar bleiben.
+
+---
+
+## Vorgehensweise
+
+- Gehe sukzessive und systematisch vor.
+- Teste Modul für Modul, Funktion für Funktion.
+- Dokumentiere neue Tests in einem Test-Log oder über Kommentare im PR.
+

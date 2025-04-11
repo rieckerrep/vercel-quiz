@@ -1,6 +1,6 @@
-import { supabase } from '../supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 import { apiCall, ApiResponse } from './apiClient';
-import { Database } from '../types/supabase';
+import { Database } from '../lib/supabase';
 import { userService } from './userService';
 import { ERROR_MESSAGES } from '../constants/errorMessages';
 import { notificationService } from '../services/notificationService';

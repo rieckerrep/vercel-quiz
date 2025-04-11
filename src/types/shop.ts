@@ -1,4 +1,4 @@
-import { Database } from './supabase';
+import { Database } from '../lib/supabase';
 
 export interface Avatar {
   id: number;

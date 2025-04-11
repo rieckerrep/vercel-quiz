@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { supabase } from '../supabaseClient';
-import { Database } from '../types/supabase';
+import { supabase } from '../lib/supabaseClient';
+import { Database } from '../lib/supabase';
 import { userService } from '../api/userService';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];

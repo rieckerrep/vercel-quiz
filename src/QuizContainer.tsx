@@ -1,6 +1,6 @@
 // QuizContainer.tsx
 import React, { useEffect, useState, useRef } from 'react';
-import { supabase } from "./supabaseClient";
+import { supabase } from "./lib/supabaseClient";
 import QuizHeadline from "./QuizHeadline";
 import JokerPanel from "./JokerPanel";
 import CasesQuestion, { CasesQuestionResult } from "./CasesQuestion";
@@ -14,7 +14,7 @@ import { useQuizStore } from "./store/useQuizStore";
 import { useSoundStore } from "./store/useSoundStore";
 import LueckentextQuestion from "./LueckentextQuestion";
 import { motion, AnimatePresence } from "framer-motion";
-import { Database } from "./types/supabase";
+import { Database } from "./lib/supabase";
 import { useUserStore } from "./store/useUserStore";
 import { authService } from "./api/authService";
 import { userService } from "./api/userService";

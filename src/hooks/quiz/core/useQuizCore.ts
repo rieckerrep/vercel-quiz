@@ -71,10 +71,11 @@ export const useQuizState = () => {
   const queryClient = useQueryClient();
   
   const saveAnswer = useMutation({
-    mutationFn: async ({ questionId, isCorrect, userId }: { 
+    mutationFn: async ({ questionId, isCorrect, userId, chapterId }: { 
       questionId: number; 
       isCorrect: boolean; 
       userId: string;
+      chapterId: number;
     }) => {
       const { error } = await supabase
         .from('answered_questions')
@@ -86,7 +87,7 @@ export const useQuizState = () => {
       
       if (error) throw error;
     },
-    onMutate: async ({ questionId, isCorrect, userId }) => {
+    onMutate: async ({ questionId, isCorrect, userId, chapterId }) => {
       await queryClient.cancelQueries({ queryKey: [queryKeys.answeredQuestions, userId] });
       
       const previousAnswers = queryClient.getQueryData<Answer[]>([queryKeys.answeredQuestions, userId]) || [];
@@ -96,7 +97,8 @@ export const useQuizState = () => {
         question_id: questionId,
         is_correct: isCorrect,
         user_id: userId,
-        answered_at: new Date().toISOString()
+        answered_at: new Date().toISOString(),
+        chapter_id: chapterId
       };
       
       queryClient.setQueryData<Answer[]>(
@@ -117,10 +119,11 @@ export const useQuizState = () => {
   });
 
   const saveSubAnswer = useMutation({
-    mutationFn: async ({ subQuestionId, isCorrect, userId }: {
+    mutationFn: async ({ subQuestionId, isCorrect, userId, chapterId }: {
       subQuestionId: number;
       isCorrect: boolean;
       userId: string;
+      chapterId: number;
     }) => {
       const { error } = await supabase
         .from('answered_cases_subquestions')
@@ -132,7 +135,7 @@ export const useQuizState = () => {
       
       if (error) throw error;
     },
-    onMutate: async ({ subQuestionId, isCorrect, userId }) => {
+    onMutate: async ({ subQuestionId, isCorrect, userId, chapterId }) => {
       await queryClient.cancelQueries({ 
         queryKey: [queryKeys.subAnswers, userId, subQuestionId] 
       });

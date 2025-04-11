@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../lib/supabaseClient";
 
 // Definiert die Struktur eines SequenceItems für die Anwendung
 export interface SequenceItem {

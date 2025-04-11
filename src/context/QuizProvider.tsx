@@ -54,7 +54,8 @@ export const QuizProvider: React.FC<QuizProviderProps> = ({ children, chapterId 
       return saveAnswerMutation({
         questionId: answer.question_id,
         isCorrect: answer.is_correct,
-        userId: answer.user_id
+        userId: answer.user_id,
+        chapterId
       });
     },
     
@@ -63,8 +64,10 @@ export const QuizProvider: React.FC<QuizProviderProps> = ({ children, chapterId 
     answeredQuestionsError,
     
     // Hilfsfunktionen
-    isQuestionAnswered: (questionId: number) => 
-      answeredQuestions.some(q => q.question_id === questionId),
+    isQuestionAnswered: (questionId: number) => {
+      const answers = answeredQuestions || [];
+      return answers.some((answer) => answer.question_id === questionId);
+    },
   };
 
   return <QuizContext.Provider value={value}>{children}</QuizContext.Provider>;

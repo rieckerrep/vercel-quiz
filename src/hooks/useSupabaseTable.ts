@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '../supabaseClient';
-import { Database } from '../types/supabase';
+import { supabase } from '../lib/supabaseClient';
+import { Database } from '../lib/supabase';
 
 // Definiere einen Typ, der alle Tabellennamen als String akzeptiert
 // Das ist nötig, da TypeScript strenge Typisierung für die Tabellennamen verlangt,

@@ -6,8 +6,8 @@ import UniversityLeaderboard from "./UniversityLeaderboard";
 import PlayerLeaderboard from "./PlayerLeaderboard";
 import "./LeaderboardOverlay.css"; // Das separate CSS für das Overlay
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "./supabaseClient";
-import { Database } from "./types/supabase";
+import { supabase } from "./lib/supabaseClient";
+import { Database } from "./lib/supabase";
 import React from 'react';
 import logoSchwarz from "./assets/images/Bilder/logo-schwarz.svg";
 

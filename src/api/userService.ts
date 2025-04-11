@@ -1,6 +1,6 @@
-import { supabase } from '../supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 import { apiCall, ApiResponse } from './apiClient';
-import { Database } from '../types/supabase';
+import { Database } from '../lib/supabase';
 import { ERROR_MESSAGES } from '../constants/errorMessages';
 import { notificationService } from '../services/notificationService';
 
@@ -278,12 +278,12 @@ export const userService = {
 
       // Neue Werte berechnen
       const newTotalXp = (currentStats.total_xp || 0) + totalXp;
-      const newQuizzesCompleted = (currentStats.quizzes_completed || 0) + 1;
+      const newQuizzesCompleted = (currentStats.questions_answered || 0) + 1;
       
       // Update-Objekt erstellen
       const updateData: any = {
         total_xp: newTotalXp,
-        quizzes_completed: newQuizzesCompleted
+        questions_answered: newQuizzesCompleted
       };
       
       // Medaille hinzufügen, falls vorhanden
@@ -307,7 +307,7 @@ export const userService = {
       
       // Quiz-Abschluss in der Datenbank protokollieren
       const { error: logError } = await supabase
-        .from('quiz_completions')
+        .from('answered_questions')
         .insert([
           {
             user_id: userId,
@@ -448,7 +448,7 @@ export const userService = {
   fetchSubjectBreakdown: async (userId: string): Promise<ApiResponse<any[]>> => {
     return apiCall(async () => {
       const { data, error } = await supabase.rpc('get_subject_breakdown_for_user', {
-        user_id: userId
+        _user_id: userId
       });
 
       return { data, error };
