@@ -746,7 +746,11 @@ export const useQuizStore = create<QuizState>((set, get) => {
     awardQuestion: async (questionId: number, isCorrect: boolean) => {
       const { 
         setAnsweredQuestions, 
-        answeredQuestions 
+        answeredQuestions,
+        roundXp,
+        roundCoins,
+        streak,
+        xpBoostUsed
       } = get();
       
       const { addToTotalXp, addToTotalCoins } = useUserStore.getState();
@@ -783,24 +787,38 @@ export const useQuizStore = create<QuizState>((set, get) => {
         }
         
         // 3) Benutzerstatistiken und Belohnungen aktualisieren
+        const xp = isCorrect ? 10 + (streak * 2) : 0;
+        const coins = isCorrect ? 10 : -5;
+        const boostedXp = xpBoostUsed ? xp * 1.5 : xp;
+
         if (isCorrect) {
           await Promise.all([
             userService.incrementCorrectAnswers(user.data.user.id),
-            userService.addXp(user.data.user.id, 10),
-            userService.addCoins(user.data.user.id, 10)
+            userService.addXp(user.data.user.id, boostedXp),
+            userService.addCoins(user.data.user.id, coins)
           ]);
           // Live-Update der XP und Münzen im UserStore
-          addToTotalXp(10);
-          addToTotalCoins(10);
+          addToTotalXp(boostedXp);
+          addToTotalCoins(coins);
         } else {
-          await userService.addCoins(user.data.user.id, -5);
+          await userService.addCoins(user.data.user.id, coins);
           // Live-Update der Münzen im UserStore
-          addToTotalCoins(-5);
+          addToTotalCoins(coins);
         }
         await userService.incrementAnsweredQuestions(user.data.user.id);
         
         // 4) Store aktualisieren für die Navigation
         setAnsweredQuestions([...answeredQuestions, questionId]);
+        
+        // 5) Belohnungen für die Animation setzen
+        set({ 
+          roundXp: roundXp + boostedXp,
+          roundCoins: roundCoins + coins,
+          rewardXp: boostedXp,
+          rewardCoins: coins,
+          showRewardAnimation: true,
+          isAnimationPlaying: true
+        });
         
         return true;
       } catch (err) {

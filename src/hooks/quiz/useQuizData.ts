@@ -7,22 +7,52 @@ import wrongSound from '../../assets/sounds/wrong.mp3';
 import { useQuizEventBus } from './quizEventBus';
 import { Answer, SubAnswer } from './types';
 import { Database } from '@/lib/supabase';
+import { useEffect } from 'react';
 
 // Definiere den Typ für das Einfügen von Antworten basierend auf der Datenbankstruktur
 type QuizAnswerInsert = Database['public']['Tables']['answered_questions']['Insert'];
 
 export const useQuestions = (chapterId: number) => {
+  const queryClient = useQueryClient();
+  
   return useQuery<Question[]>({
     queryKey: queryKeys.questions(chapterId),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('questions')
-        .select('*')
-        .eq('chapter_id', chapterId);
+        .select(`
+          id,
+          Frage,
+          "Antwort A",
+          "Antwort B",
+          "Antwort C",
+          "Antwort D",
+          "Richtige Antwort",
+          Begruendung,
+          type,
+          chapter_id,
+          course_id,
+          subquestions_count
+        `)
+        .eq('chapter_id', chapterId)
+        .order('id', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Fehler beim Laden der Fragen:', error);
+        throw new Error('Fragen konnten nicht geladen werden');
+      }
+      
+      if (!data || data.length === 0) {
+        throw new Error('Keine Fragen für dieses Kapitel gefunden');
+      }
+      
       return data;
     },
+    staleTime: 5 * 60 * 1000, // 5 Minuten
+    gcTime: 60 * 60 * 1000, // 1 Stunde
+    refetchOnWindowFocus: false,
+    retry: 2, // Maximal 2 Wiederholungsversuche bei Fehlern
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000) // Exponentielles Backoff
   });
 };
 
@@ -495,4 +525,51 @@ export const useQuizData = (chapterId: number, userId: string) => {
     playWrongSound,
     submitAnswer
   };
+};
+
+// Neue Funktion zum Prefetchen der nächsten Fragen
+export const usePrefetchNextQuestions = (currentChapterId: number) => {
+  const queryClient = useQueryClient();
+  
+  useEffect(() => {
+    const nextChapterId = currentChapterId + 1;
+    
+    // Prüfen ob das nächste Kapitel bereits im Cache ist
+    const cachedData = queryClient.getQueryData(queryKeys.questions(nextChapterId));
+    if (cachedData) return;
+
+    // Prefetch nächstes Kapitel
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.questions(nextChapterId),
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from('questions')
+          .select(`
+            id,
+            Frage,
+            "Antwort A",
+            "Antwort B",
+            "Antwort C",
+            "Antwort D",
+            "Richtige Antwort",
+            Begruendung,
+            type,
+            chapter_id,
+            course_id,
+            subquestions_count
+          `)
+          .eq('chapter_id', nextChapterId)
+          .order('id', { ascending: true });
+
+        if (error) {
+          console.error('Fehler beim Prefetchen der Fragen:', error);
+          return []; // Leeres Array zurückgeben statt Fehler zu werfen
+        }
+        
+        return data || [];
+      },
+      staleTime: 5 * 60 * 1000,
+      gcTime: 60 * 60 * 1000
+    });
+  }, [currentChapterId, queryClient]);
 }; 
