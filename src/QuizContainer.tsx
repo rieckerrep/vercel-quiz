@@ -156,12 +156,16 @@ export function QuizContainer({
   useEffect(() => {
     const loadQuiz = async () => {
       try {
-        await fetchQuestions(chapterId);
+        // Setze den Quiz-Status zurück
+        setChapterId(chapterId);
+        await initQuiz();
+        
         if (questions.length > 0) {
           setCurrentQuestion(questions[0]);
           setCurrentQuestionIndex(0);
           setTotalQuestions(questions.length);
           setIsQuizActive(true);
+          setIsQuizEnd(false); // Stelle sicher, dass das Quiz nicht als beendet markiert ist
         }
       } catch (error) {
         console.error('Fehler beim Laden des Quiz:', error);
@@ -169,7 +173,7 @@ export function QuizContainer({
     };
 
     loadQuiz();
-  }, [chapterId, fetchQuestions, questions, setCurrentQuestion, setCurrentQuestionIndex, setTotalQuestions, setIsQuizActive]);
+  }, [chapterId, initQuiz, questions, setCurrentQuestion, setCurrentQuestionIndex, setTotalQuestions, setIsQuizActive, setIsQuizEnd, setChapterId]);
 
   // Berechne mögliche XP wenn Fragen geladen sind
   useEffect(() => {
@@ -178,12 +182,12 @@ export function QuizContainer({
     }
   }, [questions, isLoading, computePossibleXp]);
 
-  // Finalisiere Quiz wenn alle Fragen beantwortet
+  // Finalisiere Quiz nur wenn alle Fragen beantwortet sind
   useEffect(() => {
-    if (!isQuizEnd && questions && currentQuestionIndex >= questions.length) {
+    if (!isQuizEnd && questions && currentQuestionIndex >= questions.length && answeredQuestions.length === questions.length) {
       finalizeQuiz();
     }
-  }, [isQuizEnd, currentQuestionIndex, questions, finalizeQuiz]);
+  }, [isQuizEnd, currentQuestionIndex, questions, finalizeQuiz, answeredQuestions]);
 
   // Aktualisiere die Benutzerdaten nur bei wichtigen Änderungen
   useEffect(() => {

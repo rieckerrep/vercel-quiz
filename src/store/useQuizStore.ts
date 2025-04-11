@@ -944,60 +944,43 @@ export const useQuizStore = create<QuizState>((set, get) => {
     },
 
     showRewardAnimationWithSound: async (isCorrect: boolean) => {
-      // Direkte Referenz auf die Funktionen, damit sie nicht aus dem State geholt werden
       const { 
-        isAnimationPlaying,
-        currentQuestion,
-        answeredQuestions,
-        playCorrectSound,
-        playWrongSound
+        currentQuestion, 
+        answeredQuestions, 
+        playCorrectSound, 
+        playWrongSound,
+        setShowRewardAnimation,
+        setIsAnimationPlaying,
+        setRewardXp,
+        setRewardCoins,
+        roundXp,
+        roundCoins,
+        setRoundXp,
+        setRoundCoins,
+        setLastAnswerCorrect
       } = get();
-      
-      console.log("showRewardAnimationWithSound aufgerufen mit isCorrect:", isCorrect);
-      
-      // Wenn keine aktuelle Frage oder Animation läuft, beenden
-      if (!currentQuestion) {
-        console.log("Keine aktuelle Frage vorhanden");
-        return;
-      }
-      
-      // Wenn bereits eine Animation läuft, beenden
-      if (isAnimationPlaying) {
-        console.log("Animation läuft bereits");
-        return;
-      }
-      
-      // Sound abspielen
-      if (isCorrect) {
-        await playCorrectSound();
-      } else {
-        await playWrongSound();
-      }
-      
-      // Prüfe, ob die Frage bereits beantwortet wurde
-      const isAlreadyAnswered = answeredQuestions.includes(currentQuestion.id);
-      console.log("Frage bereits beantwortet:", isAlreadyAnswered);
-      
-      // Animation und Belohnungen nur anzeigen, wenn die Frage noch nicht beantwortet wurde
-      if (!isAlreadyAnswered) {
-        console.log("Zeige Animation");
-        
-        // Belohnungen setzen
+
+      if (!currentQuestion) return;
+
+      // Prüfe ob die Frage bereits beantwortet wurde
+      if (!answeredQuestions.includes(currentQuestion.id)) {
+        // Spiele Sound ab
         if (isCorrect) {
-          // Hole den aktuellen State
-          const currentState = get();
-          
-          // Setze die neuen Werte
+          await playCorrectSound();
+        } else {
+          await playWrongSound();
+        }
+
+        if (isCorrect) {
           set({ 
             rewardXp: 10,
-            rewardCoins: 10,
-            roundXp: currentState.roundXp + 10,
-            roundCoins: currentState.roundCoins + 10,
-            correctAnswers: currentState.correctAnswers + 1,
+            rewardCoins: 5,
+            roundXp: get().roundXp + 10,
+            roundCoins: get().roundCoins + 5,
             lastAnswerCorrect: isCorrect,
             isAnimationPlaying: true,
             showRewardAnimation: true,
-            answeredQuestions: [...currentState.answeredQuestions, currentQuestion.id]
+            answeredQuestions: [...get().answeredQuestions, currentQuestion.id]
           });
 
           // Debug-Logging
@@ -1013,6 +996,14 @@ export const useQuizStore = create<QuizState>((set, get) => {
             answeredQuestions: [...get().answeredQuestions, currentQuestion.id]
           });
         }
+
+        // Setze Timer für das automatische Beenden der Animation
+        setTimeout(() => {
+          set({ 
+            showRewardAnimation: false,
+            isAnimationPlaying: false
+          });
+        }, 2000);
       } else {
         console.log("Frage bereits beantwortet, keine Animation anzeigen");
         set({ 
@@ -1141,7 +1132,13 @@ export const useQuizStore = create<QuizState>((set, get) => {
 
       // Prüfe ob Fragen bereits geladen sind
       if (state.questions.length > 0 && state.questions[0].chapter_id === state.chapterId) {
-        set({ isLoading: false });
+        set({ 
+          isLoading: false,
+          isQuizActive: true,
+          isQuizEnd: false,
+          currentQuestionIndex: 0,
+          currentQuestion: state.questions[0]
+        });
         return;
       }
 
@@ -1180,9 +1177,33 @@ export const useQuizStore = create<QuizState>((set, get) => {
         set({
           questions: mappedQuestions,
           currentQuestionIndex: 0,
+          currentQuestion: mappedQuestions[0],
           isLoading: false,
           isQuizActive: true,
-          isQuizEnd: false
+          isQuizEnd: false,
+          isAnswerSubmitted: false,
+          selectedAnswer: null,
+          isCorrect: null,
+          showExplanation: false,
+          lastAnswerCorrect: null,
+          userInputAnswer: "",
+          progress: 0,
+          roundXp: 0,
+          roundCoins: 0,
+          possibleRoundXp: 0,
+          showRewardAnimation: false,
+          rewardXp: 0,
+          rewardCoins: 0,
+          isAnimationPlaying: false,
+          xpBoostUsed: false,
+          streakBoostUsed: false,
+          fiftyFiftyUsed: false,
+          hintUsed: false,
+          subQuestionResults: {},
+          correctAnswers: 0,
+          wrongAnswers: 0,
+          streak: 0,
+          maxStreak: 0
         });
 
       } catch (error) {

@@ -161,13 +161,11 @@ export const userService = {
           .single();
 
         if (fetchError) {
-          notificationService.error(ERROR_MESSAGES.USER.STATS_UPDATE);
           console.error('Fehler beim Abrufen der Statistiken:', fetchError);
           return { data: null, error: fetchError };
         }
 
         if (!currentStats) {
-          notificationService.error(ERROR_MESSAGES.USER.STATS_UPDATE);
           return { data: null, error: new Error('Benutzerstatistiken nicht gefunden') };
         }
 
@@ -183,15 +181,11 @@ export const userService = {
           .single();
 
         if (error) {
-          notificationService.error(ERROR_MESSAGES.USER.STATS_UPDATE);
           console.error('Fehler beim Aktualisieren der Statistiken:', error);
-        } else {
-          notificationService.success(ERROR_MESSAGES.SUCCESS.STATS_UPDATED);
         }
 
         return { data, error };
       } catch (error) {
-        notificationService.error(ERROR_MESSAGES.GENERAL.UNKNOWN);
         console.error('Unerwarteter Fehler bei der Statistikaktualisierung:', error);
         return { data: null, error: error as Error };
       }
@@ -212,13 +206,11 @@ export const userService = {
           .single();
 
         if (fetchError) {
-          notificationService.error(ERROR_MESSAGES.USER.STATS_UPDATE);
           console.error('Fehler beim Abrufen der Statistiken:', fetchError);
           return { data: null, error: fetchError };
         }
 
         if (!currentStats) {
-          notificationService.error(ERROR_MESSAGES.USER.STATS_UPDATE);
           return { data: null, error: new Error('Benutzerstatistiken nicht gefunden') };
         }
 
@@ -234,15 +226,11 @@ export const userService = {
           .single();
 
         if (error) {
-          notificationService.error(ERROR_MESSAGES.USER.STATS_UPDATE);
           console.error('Fehler beim Aktualisieren der Statistiken:', error);
-        } else {
-          notificationService.success(ERROR_MESSAGES.SUCCESS.STATS_UPDATED);
         }
 
         return { data, error };
       } catch (error) {
-        notificationService.error(ERROR_MESSAGES.GENERAL.UNKNOWN);
         console.error('Unerwarteter Fehler bei der Statistikaktualisierung:', error);
         return { data: null, error: error as Error };
       }
