@@ -1,7 +1,7 @@
 import React, { createContext, useContext, ReactNode } from 'react';
-import { useQuizData } from '../hooks/quiz/useQuizData';
+import { useQuestions, useAnsweredQuestions, useSaveAnswer } from '../hooks/quiz/useQuizData';
 import { useUserStore } from '../store/useUserStore';
-import type { QuizContextType } from '../types/quiz';
+import type { QuizContextType, UserAnswer, QuizAnswer } from '../types/quiz';
 
 const QuizContext = createContext<QuizContextType | null>(null);
 
@@ -20,39 +20,47 @@ interface QuizProviderProps {
 
 export const QuizProvider: React.FC<QuizProviderProps> = ({ children, chapterId }) => {
   const userId = useUserStore((state) => state.profile?.id);
-  const quizData = useQuizData();
-
+  
   // Fragen des Kapitels laden
   const {
     data: questions = [],
     isLoading: isQuestionsLoading,
     error: questionsError,
-  } = quizData.useQuestions(chapterId);
+  } = useQuestions(chapterId);
 
   // Beantwortete Fragen des Users laden
-  const { data: answeredQuestionsData } = quizData.useAnsweredQuestions(userId || '');
+  const { data: answeredQuestionsData, isLoading: isAnsweredQuestionsLoading, error: answeredQuestionsError } = useAnsweredQuestions(userId || '');
   const answeredQuestions = answeredQuestionsData ?? [];
 
   // Mutation für das Speichern von Antworten
-  const { mutateAsync: saveAnswer } = quizData.useSaveAnswer();
+  const { mutateAsync: saveAnswerMutation } = useSaveAnswer();
 
   const value: QuizContextType = {
     // Lade-Status
     isQuestionsLoading,
-    isAnsweredQuestionsLoading: false,
+    isAnsweredQuestionsLoading,
     
     // Fragen und Antworten
     questions,
     subQuestions: [], // Wird später dynamisch geladen
-    answeredQuestions,
+    answeredQuestions: answeredQuestions as UserAnswer[],
     answeredSubQuestions: [], // Wird später dynamisch geladen
     
     // Mutations
-    saveAnswer,
+    saveAnswer: async (answer: Omit<UserAnswer, 'id' | 'answered_at'>) => {
+      if (!answer.question_id || answer.is_correct === null || !answer.user_id) {
+        throw new Error('Ungültige Antwortdaten');
+      }
+      return saveAnswerMutation({
+        questionId: answer.question_id,
+        isCorrect: answer.is_correct,
+        userId: answer.user_id
+      });
+    },
     
     // Fehler
     questionsError,
-    answeredQuestionsError: null,
+    answeredQuestionsError,
     
     // Hilfsfunktionen
     isQuestionAnswered: (questionId: number) => 

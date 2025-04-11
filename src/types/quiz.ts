@@ -9,10 +9,11 @@ export type UserStats = Database['public']['Tables']['user_stats']['Row'];
 
 // Gemeinsame Quiz-Typen
 export interface QuizAnswer {
-  questionId: number;
-  answer: string;
-  isCorrect: boolean;
-  timestamp: string;
+  id: number;
+  question_id: number;
+  user_id: string;
+  is_correct: boolean;
+  answered_at: string;
 }
 
 export interface QuizSubAnswer {
