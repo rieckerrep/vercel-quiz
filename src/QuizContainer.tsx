@@ -264,6 +264,74 @@ export function QuizContainer({
     }
   };
 
+  const calculateRoundXp = async (correctAnswers: number) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return 0;
+
+      // Hole bereits beantwortete Fragen
+      const { data: answeredQuestions } = await supabase
+        .from('answered_questions')
+        .select('question_id')
+        .eq('user_id', session.user.id);
+
+      const answeredQuestionIds = answeredQuestions?.map(q => q.question_id) || [];
+      
+      // Zähle nur neu beantwortete Fragen
+      const newCorrectAnswers = correctAnswers - answeredQuestionIds.length;
+      if (newCorrectAnswers <= 0) return 0;
+
+      // Berechne XP nur für neue korrekte Antworten
+      let xp = newCorrectAnswers * 10; // Basis-XP pro Frage
+
+      // Zusätzliche XP für Fallfragen
+      const caseQuestions = questions.filter(q => q.type === "cases");
+      for (const question of caseQuestions) {
+        if (!answeredQuestionIds.includes(question.id)) {
+          const { data: subs } = await supabase
+            .from("cases_subquestions")
+            .select("id")
+            .eq("question_id", question.id);
+          if (subs) {
+            xp += subs.length * 5; // 5 XP pro Unterfrage
+          }
+        }
+      }
+
+      return xp;
+    } catch (error) {
+      console.error("Fehler bei der XP-Berechnung:", error);
+      return 0;
+    }
+  };
+
+  const handleRoundComplete = async (correctAnswers: number) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      // Berechne und vergebe XP im Backend
+      const { data: roundXp, error } = await supabase.rpc('calculate_and_award_xp', {
+        p_user_id: session.user.id,
+        p_correct_answers: correctAnswers,
+        p_question_ids: questions.map(q => q.id)
+      });
+
+      if (error) {
+        console.error("Fehler bei der XP-Berechnung:", error);
+        return;
+      }
+
+      // Aktualisiere den lokalen State
+      if (typeof roundXp === 'number') {
+        setRoundXp(roundXp);
+      }
+
+    } catch (error) {
+      console.error("Fehler beim Speichern der Runden-Ergebnisse:", error);
+    }
+  };
+
   // Rendere Loading State
   if (!user) {
     return (
