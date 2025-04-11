@@ -1,35 +1,43 @@
 import { create } from 'zustand';
-import type { QuizEvent } from '../../types/quiz';
+
+export type QuizEvent = 
+  | { type: 'ANSWER_SUBMITTED'; payload: { question_id: number; user_id: string; is_correct: boolean; answered_at: string } }
+  | { type: 'SUB_ANSWER_SUBMITTED'; payload: { subQuestionId: number; isCorrect: boolean; timestamp: string } }
+  | { type: 'QUIZ_COMPLETED'; payload: { userId: string; chapterId: number; timestamp: string } }
+  | { type: 'PROGRESS_UPDATED'; payload: { currentIndex: number; totalQuestions: number; correctAnswers: number; wrongAnswers: number; streak: number; maxStreak: number } }
+  | { type: 'REWARDS_UPDATED'; payload: { xp: number; coins: number; possibleXp: number; showAnimation: boolean; isAnimationPlaying: boolean } }
+  | { type: 'ANIMATION_STARTED'; payload: { showReward: boolean; showLevelUp: boolean; isPlaying: boolean } }
+  | { type: 'ANIMATION_ENDED' };
 
 interface QuizEventBus {
-  events: QuizEvent[];
-  subscribe: (callback: (event: QuizEvent) => void) => () => void;
-  publish: (event: QuizEvent) => void;
-  clear: () => void;
+  listeners: Map<QuizEvent['type'], Set<(event: QuizEvent) => void>>;
+  emit: (event: QuizEvent) => void;
+  on: (type: QuizEvent['type'], callback: (event: QuizEvent) => void) => void;
+  off: (type: QuizEvent['type'], callback: (event: QuizEvent) => void) => void;
 }
 
-const useQuizEventBus = create<QuizEventBus>((set) => {
-  let subscribers: ((event: QuizEvent) => void)[] = [];
+export const useQuizEventBus = create<QuizEventBus>((set, get) => ({
+  listeners: new Map(),
 
-  return {
-    events: [],
-
-    subscribe: (callback) => {
-      subscribers.push(callback);
-      return () => {
-        subscribers = subscribers.filter(sub => sub !== callback);
-      };
-    },
-
-    publish: (event) => {
-      set((state) => ({ events: [...state.events, event] }));
-      subscribers.forEach(sub => sub(event));
-    },
-
-    clear: () => {
-      set({ events: [] });
+  emit: (event) => {
+    const listeners = get().listeners.get(event.type);
+    if (listeners) {
+      listeners.forEach(listener => listener(event));
     }
-  };
-});
+  },
 
-export default useQuizEventBus; 
+  on: (type, callback) => {
+    const listeners = get().listeners;
+    if (!listeners.has(type)) {
+      listeners.set(type, new Set());
+    }
+    listeners.get(type)?.add(callback);
+    set({ listeners });
+  },
+
+  off: (type, callback) => {
+    const listeners = get().listeners;
+    listeners.get(type)?.delete(callback);
+    set({ listeners });
+  }
+})); 

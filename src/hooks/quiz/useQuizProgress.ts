@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { useEffect } from 'react';
-import useQuizEventBus from './quizEventBus';
+import { useQuizEventBus, QuizEvent } from './quizEventBus';
 import type { QuizProgress } from '../../types/quiz';
 
 interface QuizProgressState extends QuizProgress {
@@ -11,9 +11,10 @@ interface QuizProgressState extends QuizProgress {
   updateStreak: (isCorrect: boolean) => void;
   resetProgress: () => void;
   calculateProgress: (currentIndex: number, totalQuestions: number) => number;
+  progress: number;
 }
 
-export const useQuizProgress = create<QuizProgressState>((set) => ({
+export const useQuizProgress = create<QuizProgressState>((set, get) => ({
   // Initialer Zustand
   currentIndex: 0,
   totalQuestions: 0,
@@ -21,45 +22,112 @@ export const useQuizProgress = create<QuizProgressState>((set) => ({
   wrongAnswers: 0,
   streak: 0,
   maxStreak: 0,
+  progress: 0,
 
   // Setter
-  setProgress: (currentIndex) => 
-    set((state) => ({ 
-      currentIndex,
-      progress: state.calculateProgress(currentIndex, state.totalQuestions)
-    })),
+  setProgress: (currentIndex) => {
+    const state = get();
+    const progress = state.calculateProgress(currentIndex, state.totalQuestions);
+    
+    set({ currentIndex, progress });
+
+    // Event emittieren
+    useQuizEventBus.getState().emit({
+      type: 'PROGRESS_UPDATED',
+      payload: {
+        currentIndex: state.currentIndex,
+        totalQuestions: state.totalQuestions,
+        correctAnswers: state.correctAnswers,
+        wrongAnswers: state.wrongAnswers,
+        streak: state.streak,
+        maxStreak: state.maxStreak
+      }
+    });
+  },
   
   incrementCorrectAnswers: () => 
-    set((state) => ({ 
-      correctAnswers: state.correctAnswers + 1 
-    })),
+    set((state) => {
+      const newState = { correctAnswers: state.correctAnswers + 1 };
+      
+      // Event emittieren
+      useQuizEventBus.getState().emit({
+        type: 'PROGRESS_UPDATED',
+        payload: {
+          currentIndex: state.currentIndex,
+          totalQuestions: state.totalQuestions,
+          correctAnswers: newState.correctAnswers,
+          wrongAnswers: state.wrongAnswers,
+          streak: state.streak,
+          maxStreak: state.maxStreak
+        }
+      });
+      
+      return newState;
+    }),
   
   incrementWrongAnswers: () => 
-    set((state) => ({ 
-      wrongAnswers: state.wrongAnswers + 1 
-    })),
+    set((state) => {
+      const newState = { wrongAnswers: state.wrongAnswers + 1 };
+      
+      // Event emittieren
+      useQuizEventBus.getState().emit({
+        type: 'PROGRESS_UPDATED',
+        payload: {
+          currentIndex: state.currentIndex,
+          totalQuestions: state.totalQuestions,
+          correctAnswers: state.correctAnswers,
+          wrongAnswers: newState.wrongAnswers,
+          streak: state.streak,
+          maxStreak: state.maxStreak
+        }
+      });
+      
+      return newState;
+    }),
   
   updateStreak: (isCorrect) => 
     set((state) => {
-      if (isCorrect) {
-        const newStreak = state.streak + 1;
-        return {
-          streak: newStreak,
-          maxStreak: Math.max(state.maxStreak, newStreak)
-        };
-      }
-      return { streak: 0 };
+      const newState = isCorrect 
+        ? {
+            streak: state.streak + 1,
+            maxStreak: Math.max(state.maxStreak, state.streak + 1)
+          }
+        : { streak: 0 };
+      
+      // Event emittieren
+      useQuizEventBus.getState().emit({
+        type: 'PROGRESS_UPDATED',
+        payload: {
+          currentIndex: state.currentIndex,
+          totalQuestions: state.totalQuestions,
+          correctAnswers: state.correctAnswers,
+          wrongAnswers: state.wrongAnswers,
+          streak: newState.streak,
+          maxStreak: newState.maxStreak || state.maxStreak
+        }
+      });
+      
+      return newState;
     }),
   
-  resetProgress: () => 
-    set({
+  resetProgress: () => {
+    const newState = {
       currentIndex: 0,
       totalQuestions: 0,
       correctAnswers: 0,
       wrongAnswers: 0,
       streak: 0,
       maxStreak: 0
-    }),
+    };
+    
+    set(newState);
+    
+    // Event emittieren
+    useQuizEventBus.getState().emit({
+      type: 'PROGRESS_UPDATED',
+      payload: newState
+    });
+  },
   
   calculateProgress: (currentIndex, totalQuestions) => {
     if (totalQuestions === 0) return 0;
@@ -69,11 +137,11 @@ export const useQuizProgress = create<QuizProgressState>((set) => ({
 
 // Hook für die Event-Verarbeitung
 export const useQuizProgressEvents = () => {
-  const eventBus = useQuizEventBus();
+  const eventBus = useQuizEventBus.getState();
   const { incrementCorrectAnswers, incrementWrongAnswers, updateStreak } = useQuizProgress();
 
   useEffect(() => {
-    const unsubscribe = eventBus.subscribe((event) => {
+    const handleEvent = (event: QuizEvent) => {
       switch (event.type) {
         case 'ANSWER_SUBMITTED':
           if (event.payload.is_correct) {
@@ -95,10 +163,14 @@ export const useQuizProgressEvents = () => {
           }
           break;
       }
-    });
+    };
+
+    eventBus.on('ANSWER_SUBMITTED', handleEvent);
+    eventBus.on('SUB_ANSWER_SUBMITTED', handleEvent);
 
     return () => {
-      unsubscribe();
+      eventBus.off('ANSWER_SUBMITTED', handleEvent);
+      eventBus.off('SUB_ANSWER_SUBMITTED', handleEvent);
     };
   }, [eventBus, incrementCorrectAnswers, incrementWrongAnswers, updateStreak]);
 }; 

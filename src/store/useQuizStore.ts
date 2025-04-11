@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { Database } from '../types/supabase'
-import { supabase } from '../supabaseClient'
+import { Database } from '../lib/supabase'
+import { supabase } from '../lib/supabaseClient'
 import { useUserStore } from './useUserStore'
 import correctSound from '../assets/sounds/correct.mp3'
 import wrongSound from '../assets/sounds/wrong.mp3'
@@ -8,6 +8,18 @@ import { useSoundStore } from './useSoundStore'
 import { quizService } from '../api/quizService'
 import { userService } from '../api/userService'
 import { authService } from '../api/authService'
+import { 
+  AnsweredSubQuestion, 
+  QuizEvent, 
+  QuestionType, 
+  QuestionOption,
+  QuizAnswer,
+  QuizSubAnswer,
+  QuizProgress,
+  QuizRewards,
+  QuizAnimations
+} from '../types/quiz'
+import { useQuizEventBus } from '../hooks/quiz/quizEventBus'
 
 export interface Question {
   id: number;
@@ -138,7 +150,7 @@ interface QuizState {
   handleTrueFalseAnswer: (questionId: number, answer: boolean) => Promise<void>;
   handleSubquestionAnswered: (subId: number, isCorrect: boolean, overallQuestionId: number) => Promise<void>;
   finalizeQuiz: () => void;
-  computeXp: () => void;
+  computeXp: () => number;
   resetQuiz: () => void;
   
   // Neue Logik
@@ -151,13 +163,12 @@ interface QuizState {
   setShowLevelUpAnimation: (show: boolean) => void;
 
   // Neue Funktionen aus QuizContainer
-  computePossibleXp: () => Promise<void>;
   checkQuizEnd: () => void;
   updateUserStats: () => Promise<void>;
   handleQuestionNavigation: (idx: number) => void;
 
   // Navigation und Fortschritt
-  calculateProgress: () => number;
+  calculateProgress: (currentIndex: number, totalQuestions: number) => number;
   handleNavigation: (idx: number) => void;
   getAnsweredQuestions: () => number[];
 
@@ -185,6 +196,37 @@ interface QuizState {
   initQuiz: () => Promise<void>;
 
   setQuestions: (questions: Question[]) => void;
+
+  // Neue Typen
+  answeredSubQuestions: AnsweredSubQuestion[];
+  questionTypes: QuestionType[];
+  questionOptions: QuestionOption[];
+  
+  // Event-Handler
+  handleQuizEvent: (event: QuizEvent) => void;
+  
+  // Datenbank-Integration
+  fetchUserStats: (userId: string) => Promise<void>;
+  fetchAnsweredSubQuestions: (userId: string) => Promise<void>;
+
+  // Neue Funktionen aus useQuizData
+  saveAnswer: (questionId: number, isCorrect: boolean, userId: string) => Promise<void>;
+  saveSubAnswer: (subQuestionId: number, isCorrect: boolean, userId: string) => Promise<void>;
+  completeQuiz: (chapterId: number) => Promise<void>;
+  addXp: (amount: number) => Promise<void>;
+  addCoins: (amount: number) => Promise<void>;
+
+  // Neue Funktionen aus useQuizProgress
+  resetProgress: () => void;
+  incrementCorrectAnswers: () => void;
+  incrementWrongAnswers: () => void;
+
+  // Neue Funktionen aus useQuizRewards
+  awardQuestionReward: (isCorrect: boolean) => void;
+  awardSubquestionReward: (isCorrect: boolean) => void;
+  resetRewards: () => void;
+
+  userStats: UserStats | null;
 }
 
 export const useQuizStore = create<QuizState>((set, get) => {
@@ -255,10 +297,17 @@ export const useQuizStore = create<QuizState>((set, get) => {
     
     // Multiple Choice
     correctMultipleChoiceAnswer: null,
+
+    // Neue Typen
+    answeredSubQuestions: [],
+    questionTypes: [],
+    questionOptions: [],
+    userStats: null,
   };
 
   return {
     ...initialState,
+    userStats: null,
 
     resetQuiz: () => {
       set(initialState);
@@ -585,7 +634,12 @@ export const useQuizStore = create<QuizState>((set, get) => {
     },
 
     computeXp: () => {
-      // XP-Berechnung implementieren
+      const { correctAnswers, streak, xpBoostUsed } = get();
+      let xp = correctAnswers * 10 + streak * 5;
+      if (xpBoostUsed) {
+        xp *= 1.5;
+      }
+      return Math.round(xp);
     },
 
     fetchAnsweredQuestions: async (userId: string) => {
@@ -598,7 +652,7 @@ export const useQuizStore = create<QuizState>((set, get) => {
         if (error) throw error;
 
         set({ 
-          answeredQuestions: data.map(item => item.question_id)
+          answeredQuestions: data.map(item => item.question_id).filter((id): id is number => id !== null)
         });
       } catch (error) {
         console.error('Fehler beim Laden der beantworteten Fragen:', error);
@@ -610,25 +664,6 @@ export const useQuizStore = create<QuizState>((set, get) => {
     },
 
     // Neue Funktionen aus QuizContainer
-    computePossibleXp: async () => {
-      const { questions, setPossibleRoundXp } = get();
-      if (!questions || questions.length === 0) return;
-      
-      let total = 0;
-      for (const q of questions) {
-        if (q.type === "cases") {
-          const { data: subs, error } = await supabase
-            .from("cases_subquestions")
-            .select("id")
-            .eq("question_id", q.id);
-          if (!error && subs) total += subs.length * 10;
-        } else {
-          total += 10;
-        }
-      }
-      setPossibleRoundXp(total);
-    },
-
     checkQuizEnd: () => {
       const { isQuizEnd, questions, currentQuestionIndex, finalizeQuiz } = get();
       if (!isQuizEnd && questions && currentQuestionIndex >= questions.length) {
@@ -672,11 +707,8 @@ export const useQuizStore = create<QuizState>((set, get) => {
     },
 
     // Navigation und Fortschritt
-    calculateProgress: () => {
-      const { questions, currentQuestionIndex } = get();
-      return questions 
-        ? ((currentQuestionIndex + 1) / questions.length) * 100
-        : 0;
+    calculateProgress: (currentIndex: number, totalQuestions: number) => {
+      return totalQuestions > 0 ? (currentIndex / totalQuestions) * 100 : 0;
     },
     
     handleNavigation: (idx: number) => {
@@ -1133,5 +1165,308 @@ export const useQuizStore = create<QuizState>((set, get) => {
 
     // Level-Up Animation
     setShowLevelUpAnimation: (show: boolean) => set({ showLevelUpAnimation: show }),
+
+    // Event-Handler
+    handleQuizEvent: (event: QuizEvent) => {
+      switch (event.type) {
+        case 'ANSWER_SUBMITTED':
+          set(state => ({
+            answeredQuestions: [...state.answeredQuestions, event.payload.question_id]
+          }));
+          break;
+        case 'SUB_ANSWER_SUBMITTED':
+          set(state => ({
+            answeredSubQuestions: [...state.answeredSubQuestions, {
+              id: 0, // Wird von der Datenbank generiert
+              sub_question_id: event.payload.subQuestionId,
+              user_id: '', // Wird beim Speichern gesetzt
+              is_correct: event.payload.isCorrect,
+              answered_at: event.payload.timestamp
+            }]
+          }));
+          break;
+        case 'PROGRESS_UPDATED':
+          set({
+            currentQuestionIndex: event.payload.currentIndex,
+            totalQuestions: event.payload.totalQuestions,
+            correctAnswers: event.payload.correctAnswers,
+            wrongAnswers: event.payload.wrongAnswers,
+            streak: event.payload.streak,
+            maxStreak: event.payload.maxStreak
+          });
+          break;
+        case 'REWARDS_UPDATED':
+          set({
+            roundXp: event.payload.xp,
+            roundCoins: event.payload.coins,
+            possibleRoundXp: event.payload.possibleXp,
+            showRewardAnimation: event.payload.showAnimation,
+            isAnimationPlaying: event.payload.isAnimationPlaying
+          });
+          break;
+        case 'ANIMATION_STARTED':
+          set({
+            showRewardAnimation: event.payload.showReward,
+            showLevelUpAnimation: event.payload.showLevelUp,
+            isAnimationPlaying: event.payload.isPlaying
+          });
+          break;
+        case 'ANIMATION_ENDED':
+          set({
+            showRewardAnimation: false,
+            showLevelUpAnimation: false,
+            isAnimationPlaying: false
+          });
+          break;
+      }
+    },
+
+    // Datenbank-Integration
+    fetchUserStats: async (userId: string) => {
+      try {
+        const { data, error } = await supabase
+          .from('user_stats')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          set({
+            correctAnswers: data.correct_answers || 0,
+            streak: data.streak || 0,
+            maxStreak: data.streak || 0 // Verwende streak statt max_streak
+          });
+        }
+      } catch (error) {
+        console.error('Fehler beim Laden der Benutzerstatistiken:', error);
+      }
+    },
+    fetchAnsweredSubQuestions: async (userId: string) => {
+      try {
+        const { data, error } = await supabase
+          .from('answered_cases_subquestions')
+          .select('*')
+          .eq('user_id', userId);
+
+        if (error) throw error;
+
+        if (data) {
+          // Transformiere die Daten in das korrekte Format
+          const transformedData: AnsweredSubQuestion[] = data.map(item => ({
+            id: item.id,
+            sub_question_id: item.subquestion_id,
+            user_id: item.user_id,
+            is_correct: item.is_correct || false,
+            answered_at: new Date().toISOString() // Standardwert für answered_at
+          }));
+          
+          set({ answeredSubQuestions: transformedData });
+        }
+      } catch (error) {
+        console.error('Fehler beim Laden der beantworteten Unterfragen:', error);
+      }
+    },
+
+    // Neue Funktionen aus useQuizData
+    saveAnswer: async (questionId, isCorrect, userId) => {
+      try {
+        const { error } = await supabase
+          .from('answered_questions')
+          .insert({
+            question_id: questionId,
+            user_id: userId,
+            is_correct: isCorrect,
+            answered_at: new Date().toISOString()
+          });
+
+        if (error) throw error;
+
+        // Event auslösen
+        const eventBus = useQuizEventBus.getState();
+        eventBus.emit({
+          type: 'ANSWER_SUBMITTED',
+          payload: {
+            question_id: questionId,
+            user_id: userId,
+            is_correct: isCorrect,
+            answered_at: new Date().toISOString()
+          }
+        });
+      } catch (error) {
+        console.error('Fehler beim Speichern der Antwort:', error);
+      }
+    },
+
+    saveSubAnswer: async (subQuestionId, isCorrect, userId) => {
+      try {
+        const { error } = await supabase
+          .from('answered_cases_subquestions')
+          .insert({
+            subquestion_id: subQuestionId,
+            user_id: userId,
+            is_correct: isCorrect,
+            answered_at: new Date().toISOString()
+          });
+
+        if (error) throw error;
+
+        // Event auslösen
+        const eventBus = useQuizEventBus.getState();
+        eventBus.emit({
+          type: 'SUB_ANSWER_SUBMITTED',
+          payload: {
+            subQuestionId,
+            isCorrect,
+            timestamp: new Date().toISOString()
+          }
+        });
+      } catch (error) {
+        console.error('Fehler beim Speichern der Unterfragen-Antwort:', error);
+      }
+    },
+
+    completeQuiz: async (chapterId) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Aktuelle Statistiken abrufen
+      const { data: currentStats, error: fetchError } = await supabase
+        .from('user_stats')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Berechne neue Werte
+      const newQuestionsAnswered = (currentStats?.questions_answered || 0) + 1;
+      const newTotalXp = (currentStats?.total_xp || 0) + get().roundXp;
+      const newTotalCoins = (currentStats?.total_coins || 0) + get().roundCoins;
+      const newStreak = get().streak;
+      const newCorrectAnswers = (currentStats?.correct_answers || 0) + get().correctAnswers;
+      
+      // Berechne neues Level basierend auf XP
+      const newLevel = Math.floor(newTotalXp / 1000) + 1; // Beispiel: 1000 XP pro Level
+
+      const { error } = await supabase
+        .from('user_stats')
+        .update({ 
+          last_played: new Date().toISOString(),
+          questions_answered: newQuestionsAnswered,
+          total_xp: newTotalXp,
+          total_coins: newTotalCoins,
+          streak: newStreak,
+          correct_answers: newCorrectAnswers,
+          level: newLevel,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      // Event auslösen
+      const eventBus = useQuizEventBus.getState();
+      eventBus.emit({
+        type: 'QUIZ_COMPLETED',
+        payload: {
+          userId: user.id,
+          chapterId,
+          timestamp: new Date().toISOString()
+        }
+      });
+    },
+
+    addXp: async (amount) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('user_stats')
+        .update({ total_xp: amount } as Partial<UserStats>)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+    },
+
+    addCoins: async (amount) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('user_stats')
+        .update({ total_coins: amount } as Partial<UserStats>)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+    },
+
+    // Neue Funktionen aus useQuizProgress
+    resetProgress: () => {
+      set({
+        currentQuestionIndex: 0,
+        totalQuestions: 0,
+        correctAnswers: 0,
+        wrongAnswers: 0,
+        streak: 0,
+        maxStreak: 0,
+        progress: 0
+      });
+    },
+
+    incrementCorrectAnswers: () => {
+      set(state => ({
+        correctAnswers: state.correctAnswers + 1
+      }));
+    },
+
+    incrementWrongAnswers: () => {
+      set(state => ({
+        wrongAnswers: state.wrongAnswers + 1
+      }));
+    },
+
+    // Neue Funktionen aus useQuizRewards
+    awardQuestionReward: (isCorrect) => {
+      const { streak, xpBoostUsed } = get();
+      const xp = isCorrect ? 10 + (streak * 2) : 0;
+      const coins = isCorrect ? 5 : -2;
+
+      set(state => ({
+        roundXp: state.roundXp + (xpBoostUsed ? xp * 1.5 : xp),
+        roundCoins: state.roundCoins + coins,
+        rewardXp: xpBoostUsed ? xp * 1.5 : xp,
+        rewardCoins: coins,
+        showRewardAnimation: true,
+        isAnimationPlaying: true
+      }));
+    },
+
+    awardSubquestionReward: (isCorrect) => {
+      const xp = isCorrect ? 5 : 0;
+      const coins = isCorrect ? 3 : -1;
+
+      set(state => ({
+        roundXp: state.roundXp + xp,
+        roundCoins: state.roundCoins + coins,
+        rewardXp: xp,
+        rewardCoins: coins,
+        showRewardAnimation: true,
+        isAnimationPlaying: true
+      }));
+    },
+
+    resetRewards: () => {
+      set({
+        roundXp: 0,
+        roundCoins: 0,
+        possibleRoundXp: 0,
+        showRewardAnimation: false,
+        rewardXp: 0,
+        rewardCoins: 0,
+        isAnimationPlaying: false
+      });
+    },
   }
 }) 
