@@ -20,6 +20,7 @@ import { authService } from "./api/authService";
 import { userService } from "./api/userService";
 import { quizService } from "./api/quizService";
 import { Question } from "./store/useQuizStore";
+import { useQuizData } from "./hooks/quiz/useQuizData";
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
@@ -45,6 +46,7 @@ export function QuizContainer({
   const chapterId = 1;
   const { playCorrectSound, playWrongSound } = useSoundStore();
   const { addXp, addCoins, incrementAnsweredQuestions, incrementCorrectAnswers, fetchUserStats } = useUserStore();
+  const { submitAnswer } = useQuizData(chapterId, user?.id || '');
 
   // Zustand Store
   const {
@@ -131,7 +133,6 @@ export function QuizContainer({
     isQuestionAnswered,
     showLevelUpAnimation,
     setShowLevelUpAnimation,
-    computePossibleXp,
     checkQuizEnd,
     updateUserStats,
     handleQuestionNavigation,
@@ -155,7 +156,7 @@ export function QuizContainer({
 
   // Berechne mögliche XP
   useEffect(() => {
-    async function computeXp() {
+    async function calculatePossibleXp() {
       if (!questions || questions.length === 0) return;
       let total = 0;
       for (const q of questions) {
@@ -171,7 +172,7 @@ export function QuizContainer({
       }
       setPossibleRoundXp(total);
     }
-    computeXp();
+    calculatePossibleXp();
   }, [questions, setPossibleRoundXp]);
 
   // Finalisiere Quiz wenn alle Fragen beantwortet
@@ -190,59 +191,69 @@ export function QuizContainer({
 
   // Ersetze die Sound-Logik in den onClick-Handlern
   const handleAnswerWithSound = async (isCorrect: boolean) => {
-    if (!currentQuestion) return;
+    if (!currentQuestion || !user?.id) return;
     if (isAnimationPlaying) return;
     
-    // Verarbeite die Antwort
-    await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
-    await awardQuestion(currentQuestion.id, isCorrect);
-    
-    // Zeige die Animation mit Sound
-    await showRewardAnimationWithSound(isCorrect);
+    try {
+      // Speichere die Antwort in der Datenbank
+      await submitAnswer({
+        userId: user.id,
+        questionId: currentQuestion.id,
+        selectedOption: isCorrect ? "true" : "false",
+        isCorrect,
+        chapterId
+      });
+      
+      // Verarbeite die Antwort im Store
+      await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
+      await awardQuestion(currentQuestion.id, isCorrect);
+      
+      // Zeige die Animation mit Sound
+      await showRewardAnimationWithSound(isCorrect);
+    } catch (error) {
+      console.error('Fehler beim Speichern der Antwort:', error);
+    }
   };
 
   // Ersetze die Sound-Logik in den onClick-Handlern für true/false Fragen
   const handleTrueFalseWithSound = async (isTrue: boolean) => {
-    if (isAnimationPlaying) {
-      console.log("handleTrueFalseWithSound - Animation läuft bereits, Funktion wird abgebrochen");
-      return;
-    }
-    if (!currentQuestion) {
-      console.log("handleTrueFalseWithSound - Keine aktuelle Frage vorhanden, Funktion wird abgebrochen");
-      return;
-    }
+    if (!currentQuestion || !user?.id) return;
+    if (isAnimationPlaying) return;
 
-    console.log("handleTrueFalseWithSound aufgerufen mit isTrue:", isTrue);
-    console.log("Aktueller Zustand vor handleTrueFalseAnswer:", { 
-      isAnimationPlaying, 
-      currentQuestion: currentQuestion.id,
-      showRewardAnimation,
-      lastAnswerCorrect
-    });
-    
-    // Rufe nur handleTrueFalseAnswer auf, das bereits die Animation steuert
-    await handleTrueFalseAnswer(currentQuestion.id, isTrue);
-    
-    console.log("handleTrueFalseWithSound - Nach handleTrueFalseAnswer:", {
-      isAnimationPlaying: useQuizStore.getState().isAnimationPlaying,
-      showRewardAnimation: useQuizStore.getState().showRewardAnimation,
-      lastAnswerCorrect: useQuizStore.getState().lastAnswerCorrect
-    });
+    try {
+      // Speichere die Antwort
+      await submitAnswer({
+        userId: user.id,
+        questionId: currentQuestion.id,
+        selectedOption: isTrue ? "true" : "false",
+        isCorrect: isTrue,
+        chapterId
+      });
+      
+      // Verarbeite die Antwort im Store
+      await handleTrueFalseAnswer(currentQuestion.id, isTrue);
+    } catch (error) {
+      console.error('Fehler beim Speichern der Antwort:', error);
+    }
   };
 
   // Ersetze die Sound-Logik in den onClick-Handlern für Subfragen
   const handleSubquestionWithSound = async (subId: number, isCorrect: boolean) => {
-    if (!currentQuestion) return;
+    if (!currentQuestion || !user?.id) return;
     if (isAnimationPlaying) return;
     
-    // Verarbeite die Unterfrage
-    await handleSubquestionAnswered(subId, isCorrect, currentQuestion.id);
-    
-    // Spiele den Sound ab
-    if (isCorrect) {
-      await playCorrectSound();
-    } else {
-      await playWrongSound();
+    try {
+      // Verarbeite die Unterfrage
+      await handleSubquestionAnswered(subId, isCorrect, currentQuestion.id);
+      
+      // Spiele den Sound ab
+      if (isCorrect) {
+        await playCorrectSound();
+      } else {
+        await playWrongSound();
+      }
+    } catch (error) {
+      console.error('Fehler beim Verarbeiten der Unterfrage:', error);
     }
   };
 

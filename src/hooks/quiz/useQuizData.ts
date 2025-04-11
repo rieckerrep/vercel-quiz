@@ -249,26 +249,60 @@ export const useSubmitAnswer = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ questionId, isCorrect, userId, chapterId }: { 
+    mutationFn: async ({ 
+      userId, 
+      questionId, 
+      selectedOption, 
+      isCorrect,
+      chapterId
+    }: { 
+      userId: string; 
       questionId: number; 
-      isCorrect: boolean; 
-      userId: string;
+      selectedOption: string; 
+      isCorrect: boolean;
       chapterId: number;
     }) => {
       const { error } = await supabase
         .from('answered_questions')
         .insert({
-          question_id: questionId,
           user_id: userId,
+          question_id: questionId,
+          selected_option: selectedOption,
           is_correct: isCorrect,
-          chapter_id: chapterId,
-          answered_at: new Date().toISOString()
+          answered_at: new Date().toISOString(),
+          chapter_id: chapterId
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Fehler beim Speichern der Antwort:', error);
+        throw error;
+      }
     },
-    onSuccess: (_, { userId, chapterId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.answeredQuestionsByUser(userId, chapterId) });
+    onMutate: async ({ userId, isCorrect }) => {
+      // Aktuelle Stats abrufen
+      const previousStats = queryClient.getQueryData<UserStats>(queryKeys.userStatsByUser(userId));
+      
+      // Optimistisch aktualisieren
+      if (previousStats) {
+        queryClient.setQueryData<UserStats>(queryKeys.userStatsByUser(userId), {
+          ...previousStats,
+          total_xp: (previousStats.total_xp || 0) + (isCorrect ? 10 : 0),
+          questions_answered: (previousStats.questions_answered || 0) + 1,
+          correct_answers: (previousStats.correct_answers || 0) + (isCorrect ? 1 : 0)
+        });
+      }
+      
+      return { previousStats };
+    },
+    onError: (_, { userId }, context) => {
+      // Bei Fehler zurücksetzen
+      if (context?.previousStats) {
+        queryClient.setQueryData(queryKeys.userStatsByUser(userId), context.previousStats);
+      }
+    },
+    onSuccess: (_, { userId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.userStatsByUser(userId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.answeredQuestions(userId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.quizProgress(userId) });
     }
   });
@@ -445,56 +479,7 @@ export const useQuizData = (chapterId: number, userId: string) => {
     return (questions?.length || 0) * 10;
   };
 
-  // Antwort speichern
-  const { mutateAsync: saveAnswer } = useMutation({
-    mutationFn: async ({ questionId, isCorrect, userId, chapterId }: { questionId: number; isCorrect: boolean; userId: string; chapterId: number }) => {
-      const { data, error } = await supabase
-        .from('answered_questions')
-        .insert([
-          {
-            question_id: questionId,
-            is_correct: isCorrect,
-            user_id: userId,
-            answered_at: new Date().toISOString(),
-            chapter_id: chapterId
-          },
-        ])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
-    onMutate: async ({ questionId, isCorrect, userId, chapterId }) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.answeredQuestions(userId) });
-      const previousAnswers = queryClient.getQueryData<QuizAnswer[]>(queryKeys.answeredQuestions(userId)) || [];
-      
-      queryClient.setQueryData<QuizAnswer[]>(queryKeys.answeredQuestions(userId), (old) => [
-        ...(old || []),
-        {
-          id: Date.now(),
-          question_id: questionId,
-          user_id: userId,
-          is_correct: isCorrect,
-          answered_at: new Date().toISOString(),
-          chapter_id: chapterId
-        }
-      ]);
-
-      return { previousAnswers };
-    },
-    onError: (_, { userId }, context) => {
-      if (context?.previousAnswers) {
-        queryClient.setQueryData(queryKeys.answeredQuestions(userId), context.previousAnswers);
-      }
-    },
-    onSuccess: (_, { userId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.answeredQuestions(userId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.userStatsByUser(userId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.quizAnswersByUser(userId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.quizProgress(userId) });
-    },
-  });
+  const { mutateAsync: submitAnswer } = useSubmitAnswer();
 
   return {
     questions,
@@ -508,6 +493,6 @@ export const useQuizData = (chapterId: number, userId: string) => {
     computePossibleXp,
     playCorrectSound,
     playWrongSound,
-    saveAnswer
+    submitAnswer
   };
 }; 
