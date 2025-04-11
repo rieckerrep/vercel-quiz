@@ -101,6 +101,7 @@ interface UserState {
   totalXp: number;
   totalCoins: number;
   userStats: UserStats | null;
+  profile: Profile | null;
   setTotalXp: (xp: number) => void;
   setTotalCoins: (coins: number) => void;
   addToTotalXp: (xp: number) => void;
@@ -110,6 +111,7 @@ interface UserState {
   incrementAnsweredQuestions: () => Promise<void>;
   incrementCorrectAnswers: () => Promise<void>;
   fetchUserStats: (userId: string) => Promise<void>;
+  loadUserData: (userId: string) => Promise<void>;
 }
 
 export const useUserStore = create<UserState>((set, get) => ({
@@ -118,6 +120,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   totalXp: 0,
   totalCoins: 0,
   userStats: null,
+  profile: null,
   setTotalXp: (xp: number) => set({ totalXp: xp }),
   setTotalCoins: (coins: number) => set({ totalCoins: coins }),
   addToTotalXp: (xp: number) => set(state => ({ totalXp: state.totalXp + xp })),
@@ -188,6 +191,69 @@ export const useUserStore = create<UserState>((set, get) => ({
       totalXp: data.total_xp || 0,
       totalCoins: data.total_coins || 0
     });
+  },
+  loadUserData: async (userId: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      // Lade Profil
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (profileError) throw profileError;
+
+      // Lade Statistiken
+      const { data: statsData, error: statsError } = await supabase
+        .from('user_stats')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (statsError) {
+        // Wenn keine Statistiken gefunden wurden, erstelle neue
+        if (statsError.code === 'PGRST116') {
+          const { data: newStats, error: createError } = await supabase
+            .from('user_stats')
+            .insert({
+              user_id: userId,
+              total_xp: 0,
+              level: 1,
+              streak: 0,
+              questions_answered: 0,
+              correct_answers: 0,
+              total_coins: 0
+            })
+            .select()
+            .single();
+
+          if (createError) throw createError;
+          set({ 
+            profile: profileData,
+            userStats: newStats,
+            totalXp: 0,
+            totalCoins: 0,
+            isLoading: false 
+          });
+          return;
+        }
+        throw statsError;
+      }
+
+      set({ 
+        profile: profileData,
+        userStats: statsData,
+        totalXp: statsData?.total_xp || 0,
+        totalCoins: statsData?.total_coins || 0,
+        isLoading: false
+      });
+    } catch (error: any) {
+      set({ 
+        error: error.message || 'Ein Fehler ist aufgetreten',
+        isLoading: false 
+      });
+    }
   }
 }));
 

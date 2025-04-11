@@ -12,6 +12,7 @@ import ShopScreen from "./ShopScreen";
 import LeaderboardOverlay from "./LeaderboardOverlay";
 import { Toaster } from 'react-hot-toast';
 import { Database } from './lib/supabase';
+import { useUserData } from './store/useUserStore';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
@@ -19,22 +20,36 @@ type UserStats = Database['public']['Tables']['user_stats']['Row'];
 // Loading-Komponente
 const LoadingScreen = () => (
   <div className="min-h-screen flex items-center justify-center text-lg">
-    Lade...
+    <div className="flex flex-col items-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mb-4"></div>
+      <p>Lade...</p>
+    </div>
   </div>
 );
 
 // Error-Komponente
-const ErrorScreen = ({ message }: { message: string }) => (
+const ErrorScreen = ({ message }: { message: string | Error }) => (
   <div className="min-h-screen flex items-center justify-center text-lg text-red-500">
-    Fehler: {message}
+    <div className="flex flex-col items-center">
+      <svg className="w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <p>Fehler: {typeof message === 'string' ? message : message.message}</p>
+      <button 
+        onClick={() => window.location.reload()} 
+        className="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+      >
+        Neu laden
+      </button>
+    </div>
   </div>
 );
 
 // Wrapper-Komponente für die Navigation
 function AppContent() {
   const navigate = useNavigate();
-  const { user, isLoading: authLoading, initAuth } = useAuthStore();
-  const { loadUserData, profile, userStats, isLoading: userLoading, error } = useUserStore();
+  const { user, isLoading: authLoading, error: authError, initAuth } = useAuthStore();
+  const { profile, userStats, isLoading: userLoading, error: userError, loadUserData } = useUserData(user?.id || '');
   const { fetchQuestions } = useQuizStore();
   const { playCorrectSound, playWrongSound } = useSoundStore();
 
@@ -46,31 +61,26 @@ function AppContent() {
   // User-Daten laden wenn sich der User ändert
   React.useEffect(() => {
     if (user?.id) {
-      loadUserData(user.id);
+      loadUserData();
     }
   }, [user?.id, loadUserData]);
 
-  // Zeige Loading-Screen während Auth initialisiert wird
-  if (authLoading) {
+  // Ladezustand oder Fehler anzeigen
+  if (authLoading || userLoading) {
     return <LoadingScreen />;
+  }
+
+  if (authError) {
+    return <ErrorScreen message={authError} />;
+  }
+
+  if (userError) {
+    return <ErrorScreen message={userError} />;
   }
 
   // Zeige Login-Screen wenn kein User vorhanden ist
   if (!user) {
-    return <LoginScreen onLogin={(userId) => loadUserData(userId)} />;
-  }
-
-  // Zeige Loading-Screen während User-Daten geladen werden
-  if (userLoading) {
-    return <LoadingScreen />;
-  }
-
-  // Zeige Error-Screen bei Fehlern
-  if (error) {
-    const errorMessage = typeof error === 'object' && error !== null && 'message' in error 
-      ? (error as { message: string }).message 
-      : String(error);
-    return <ErrorScreen message={errorMessage} />;
+    return <LoginScreen onLogin={(userId) => loadUserData()} />;
   }
 
   return (

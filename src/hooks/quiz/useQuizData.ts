@@ -8,6 +8,8 @@ import { useQuizEventBus } from './quizEventBus';
 import { Answer, SubAnswer } from './types';
 import { Database } from '@/lib/supabase';
 import { useEffect } from 'react';
+import { useSoundStore } from '../../store/useSoundStore';
+import { useUserStore } from '../../store/useUserStore';
 
 // Definiere den Typ für das Einfügen von Antworten basierend auf der Datenbankstruktur
 type QuizAnswerInsert = Database['public']['Tables']['answered_questions']['Insert'];
@@ -18,6 +20,10 @@ export const useQuestions = (chapterId: number) => {
   return useQuery<Question[]>({
     queryKey: queryKeys.questions(chapterId),
     queryFn: async () => {
+      if (!chapterId) {
+        return [];
+      }
+
       const { data, error } = await supabase
         .from('questions')
         .select(`
@@ -39,17 +45,18 @@ export const useQuestions = (chapterId: number) => {
 
       if (error) {
         console.error('Fehler beim Laden der Fragen:', error);
-        throw new Error('Fragen konnten nicht geladen werden');
+        return [];
       }
       
       if (!data || data.length === 0) {
-        throw new Error('Keine Fragen für dieses Kapitel gefunden');
+        console.log('Keine Fragen für Kapitel ' + chapterId + ' gefunden');
+        return [];
       }
       
       return data;
     },
-    staleTime: 5 * 60 * 1000, // 5 Minuten
-    gcTime: 60 * 60 * 1000, // 1 Stunde
+    staleTime: 5 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
     refetchOnWindowFocus: false,
     retry: 1, // Reduzierte Wiederholungsversuche
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
@@ -356,11 +363,19 @@ export const useSaveProgress = () => {
 };
 
 export const useQuizData = (chapterId: number, userId: string) => {
-  const queryClient = useQueryClient();
-  const eventBus = useQuizEventBus.getState();
+  const { data: questions = [], isLoading } = useQuestions(chapterId);
+  const { data: answeredQuestions = [] } = useAnsweredQuestions(userId);
+  const { mutate: saveAnswer } = useSaveAnswers();
+  const { mutate: saveSubAnswer } = useSaveSubAnswers();
+  const { mutate: updateXP } = useUpdateXP();
+  const { mutate: completeQuiz } = useCompleteQuiz();
+  const { mutate: addCoins } = useAddCoins();
+  const { playCorrectSound, playWrongSound } = useSoundStore();
+  const { addXp, incrementAnsweredQuestions, incrementCorrectAnswers } = useUserStore();
+  const { emit } = useQuizEventBus();
 
   // Fragen abrufen
-  const { data: questions, isLoading: isQuestionsLoading } = useQuery({
+  const { data: questionsData, isLoading: isQuestionsLoading } = useQuery({
     queryKey: [queryKeys.questions, chapterId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -387,22 +402,6 @@ export const useQuizData = (chapterId: number, userId: string) => {
     }
   });
 
-  // Beantwortete Fragen abrufen
-  const { data: answeredQuestions } = useQuery({
-    queryKey: [queryKeys.answeredQuestions, userId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('answered_questions')
-        .select('*')
-        .eq('user_id', userId)
-        .in('question_id', questions?.map(q => q.id) || []);
-
-      if (error) throw error;
-      return data as QuizAnswer[];
-    },
-    enabled: !!questions,
-  });
-
   // Benutzerstatistiken abrufen
   const { data: userStats } = useQuery({
     queryKey: queryKeys.userStatsByUser(userId),
@@ -418,16 +417,28 @@ export const useQuizData = (chapterId: number, userId: string) => {
     },
   });
 
-  // Sound-Funktionen
-  const playCorrectSound = () => {
-    const audio = new Audio(correctSound);
-    audio.play();
+  // XP berechnen
+  const computeXp = (isCorrect: boolean, streak: string | number): number => {
+    const streakNumber = typeof streak === 'string' ? parseInt(streak, 10) : streak;
+    const baseXp = isCorrect ? 10 : 0;
+    const streakBonus = isCorrect ? Math.min(streakNumber, 5) * 2 : 0;
+    return baseXp + streakBonus;
   };
 
-  const playWrongSound = () => {
-    const audio = new Audio(wrongSound);
-    audio.play();
+  // Mögliche XP berechnen
+  const computePossibleXp = async (chapterId: number): Promise<number> => {
+    const { data: questions, error } = await supabase
+      .from('questions')
+      .select('id, type')
+      .eq('chapter_id', chapterId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+
+    return (questions?.length || 0) * 10;
   };
+
+  const { mutateAsync: submitAnswer } = useSubmitAnswer();
 
   // Antwort verarbeiten
   const handleAnswer = async (question: Question, answer: string): Promise<boolean> => {
@@ -466,36 +477,13 @@ export const useQuizData = (chapterId: number, userId: string) => {
       chapter_id: chapterId
     } satisfies QuizAnswerInsert;
 
-    eventBus.emit({
+    emit({
       type: 'ANSWER_SUBMITTED',
       payload: answerEvent
     });
 
     return isCorrect;
   };
-
-  // XP berechnen
-  const computeXp = (isCorrect: boolean, streak: string | number): number => {
-    const streakNumber = typeof streak === 'string' ? parseInt(streak, 10) : streak;
-    const baseXp = isCorrect ? 10 : 0;
-    const streakBonus = isCorrect ? Math.min(streakNumber, 5) * 2 : 0;
-    return baseXp + streakBonus;
-  };
-
-  // Mögliche XP berechnen
-  const computePossibleXp = async (chapterId: number): Promise<number> => {
-    const { data: questions, error } = await supabase
-      .from('questions')
-      .select('id, type')
-      .eq('chapter_id', chapterId)
-      .order('created_at', { ascending: true });
-
-    if (error) throw error;
-
-    return (questions?.length || 0) * 10;
-  };
-
-  const { mutateAsync: submitAnswer } = useSubmitAnswer();
 
   return {
     questions,

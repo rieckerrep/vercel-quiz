@@ -55,6 +55,7 @@ interface QuizState {
   questions: Question[];
   isQuestionsLoading: boolean;
   questionsError: Error | null;
+  chapterId: number | null;
   
   // Aktuelle Frage
   currentQuestion: Question | null;
@@ -122,6 +123,7 @@ interface QuizState {
   setShowJokerPanel: (show: boolean) => void;
   setShowLeaderboard: (show: boolean) => void;
   setProgress: (progress: number) => void;
+  setChapterId: (chapterId: number) => void;
   setShowExplanation: (show: boolean) => void;
   setLastAnswerCorrect: (correct: boolean | null) => void;
   setUserInputAnswer: (answer: string) => void;
@@ -238,6 +240,7 @@ export const useQuizStore = create<QuizState>((set, get) => {
     questions: [],
     isQuestionsLoading: false,
     questionsError: null,
+    chapterId: null,
     
     // Aktuelle Frage
     currentQuestion: null,
@@ -324,35 +327,52 @@ export const useQuizStore = create<QuizState>((set, get) => {
 
       set({ isQuestionsLoading: true, questionsError: null });
       try {
-        const { data, error } = await quizService.fetchQuestions(chapterId);
-        if (error) throw error;
+        const { data, error } = await supabase
+          .from('questions')
+          .select('id, type, "Frage", "Antwort A", "Antwort B", "Antwort C", "Antwort D", "Richtige Antwort", "Begruendung", chapter_id')
+          .eq('chapter_id', chapterId)
+          .order('id');
 
-        if (data) {
-          const questions = data.map(q => ({
-            id: q.id,
-            type: q.type || "",
-            question_text: q.Frage || "",
-            correct_answer: q["Richtige Antwort"] || "",
-            explanation: q.Begruendung,
-            chapter_id: q.chapter_id,
-            "Antwort A": q["Antwort A"],
-            "Antwort B": q["Antwort B"],
-            "Antwort C": q["Antwort C"],
-            "Antwort D": q["Antwort D"],
-            Begruendung: q.Begruendung,
-            Frage: q.Frage,
-            "Richtige Antwort": q["Richtige Antwort"]
-          }));
-          
+        if (error) {
+          console.error('Fehler beim Laden der Fragen:', error);
           set({ 
-            questions,
-            isQuestionsLoading: false,
-            questionsError: null,
-            currentQuestion: questions[0],
-            currentQuestionIndex: 0,
-            totalQuestions: questions.length
+            questions: [], 
+            isQuestionsLoading: false, 
+            questionsError: new Error(error.message)
           });
+          return;
         }
+
+        if (!data || data.length === 0) {
+          set({ 
+            questions: [], 
+            isQuestionsLoading: false, 
+            questionsError: new Error('Keine Fragen gefunden')
+          });
+          return;
+        }
+
+        const mappedQuestions = data.map(q => ({
+          id: q.id,
+          type: q.type || "",
+          question_text: q.Frage || "",
+          correct_answer: q["Richtige Antwort"] || "",
+          explanation: q.Begruendung || "",
+          chapter_id: q.chapter_id,
+          "Antwort A": q["Antwort A"] || "",
+          "Antwort B": q["Antwort B"] || "",
+          "Antwort C": q["Antwort C"] || "",
+          "Antwort D": q["Antwort D"] || ""
+        }));
+        
+        set({ 
+          questions: mappedQuestions,
+          isQuestionsLoading: false,
+          questionsError: null,
+          currentQuestion: mappedQuestions[0],
+          currentQuestionIndex: 0,
+          totalQuestions: mappedQuestions.length
+        });
       } catch (error) {
         console.error('Fehler beim Laden der Fragen:', error);
         set({ 
@@ -1111,71 +1131,66 @@ export const useQuizStore = create<QuizState>((set, get) => {
     setAnsweredQuestions: (questions) => set({ answeredQuestions: questions }),
 
     initQuiz: async () => {
-      const { 
-        setQuestions, 
-        setCurrentQuestion, 
-        setTotalQuestions, 
-        setCurrentQuestionIndex, 
-        setAnsweredQuestions,
-        setIsQuizEnd,
-        setIsQuizActive,
-        resetQuiz,
-        setProgress
-      } = get();
+      const state = get();
+      const user = await authService.getSession();
       
+      if (!user.data?.user || !state.chapterId) {
+        set({ isLoading: false });
+        return;
+      }
+
+      // Prüfe ob Fragen bereits geladen sind
+      if (state.questions.length > 0 && state.questions[0].chapter_id === state.chapterId) {
+        set({ isLoading: false });
+        return;
+      }
+
       try {
-        // Quiz vollständig zurücksetzen
-        resetQuiz();
+        set({ isLoading: true });
         
-        // Benutzer-Session holen
-        const user = await authService.getSession();
-        if (!user.data?.user) {
-          console.error("Kein Benutzer angemeldet");
+        const { data, error } = await supabase
+          .from('questions')
+          .select('id, type, "Frage", "Antwort A", "Antwort B", "Antwort C", "Antwort D", "Richtige Antwort", "Begruendung", chapter_id')
+          .eq('chapter_id', state.chapterId)
+          .order('id');
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+          set({ 
+            isLoading: false,
+            questions: []
+          });
           return;
         }
 
-        // Fragen laden
-        const { data: questionsData, error } = await quizService.fetchQuestions(1);
-        if (error || !questionsData) {
-          console.error("Fehler beim Laden der Fragen:", error);
-          return;
-        }
-
-        // Transformiere die Daten in das erwartete Question-Format
-        const questions: Question[] = questionsData.map(q => ({
+        const mappedQuestions = data.map(q => ({
           id: q.id,
           type: q.type || "",
           question_text: q.Frage || "",
           correct_answer: q["Richtige Antwort"] || "",
-          explanation: q.Begruendung,
+          explanation: q.Begruendung || "",
           chapter_id: q.chapter_id,
-          "Antwort A": q["Antwort A"],
-          "Antwort B": q["Antwort B"],
-          "Antwort C": q["Antwort C"],
-          "Antwort D": q["Antwort D"],
-          Begruendung: q.Begruendung,
-          Frage: q.Frage,
-          "Richtige Antwort": q["Richtige Antwort"]
+          "Antwort A": q["Antwort A"] || "",
+          "Antwort B": q["Antwort B"] || "",
+          "Antwort C": q["Antwort C"] || "",
+          "Antwort D": q["Antwort D"] || ""
         }));
 
-        // Beantwortete Fragen laden
-        const { data: answeredQuestions } = await quizService.fetchAnsweredQuestions(user.data.user.id);
-        const answeredQuestionIds = answeredQuestions?.map(q => q.question_id).filter((id): id is number => id !== null) || [];
-
-        // Store aktualisieren
         set({
-          questions,
-          totalQuestions: questions.length,
-          currentQuestion: questions[0],
+          questions: mappedQuestions,
           currentQuestionIndex: 0,
+          isLoading: false,
           isQuizActive: true,
-          isQuizEnd: false,
-          progress: 0,
-          answeredQuestions: answeredQuestionIds
+          isQuizEnd: false
         });
 
       } catch (error) {
-        console.error("Fehler bei der Quiz-Initialisierung:", error);
+        console.error('Fehler beim Laden der Fragen:', error);
+        set({ 
+          isLoading: false,
+          questions: []
+        });
       }
     },
 
@@ -1493,5 +1508,7 @@ export const useQuizStore = create<QuizState>((set, get) => {
         isAnimationPlaying: false
       });
     },
+
+    setChapterId: (chapterId: number) => set({ chapterId }),
   }
 }) 

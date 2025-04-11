@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { supabase } from '@/lib/supabaseClient';
 
 interface QuizRewards {
   // Belohnungen
@@ -9,6 +10,7 @@ interface QuizRewards {
   rewardXp: number;
   rewardCoins: number;
   isAnimationPlaying: boolean;
+  isCalculatingXp: boolean;
   
   // Aktionen
   setRoundXp: (xp: number) => void;
@@ -18,12 +20,13 @@ interface QuizRewards {
   setRewardXp: (xp: number) => void;
   setRewardCoins: (coins: number) => void;
   setIsAnimationPlaying: (playing: boolean) => void;
+  setIsCalculatingXp: (calculating: boolean) => void;
   
   // Belohnungsfunktionen
   awardQuestion: (isCorrect: boolean) => void;
   awardSubquestion: (isCorrect: boolean) => void;
   computeXp: (isCorrect: boolean, streak: number) => number;
-  computePossibleXp: (totalQuestions: number) => number;
+  computePossibleXp: (totalQuestions: number, questions: any[]) => Promise<number>;
   resetRewards: () => void;
 }
 
@@ -36,6 +39,7 @@ export const useQuizRewards = create<QuizRewards>((set) => ({
   rewardXp: 0,
   rewardCoins: 0,
   isAnimationPlaying: false,
+  isCalculatingXp: false,
 
   // Setter
   setRoundXp: (xp) => set({ roundXp: xp }),
@@ -45,6 +49,7 @@ export const useQuizRewards = create<QuizRewards>((set) => ({
   setRewardXp: (xp) => set({ rewardXp: xp }),
   setRewardCoins: (coins) => set({ rewardCoins: coins }),
   setIsAnimationPlaying: (playing) => set({ isAnimationPlaying: playing }),
+  setIsCalculatingXp: (calculating) => set({ isCalculatingXp: calculating }),
 
   // Belohnungsfunktionen
   awardQuestion: (isCorrect) => {
@@ -81,10 +86,44 @@ export const useQuizRewards = create<QuizRewards>((set) => ({
     return baseXp + streakBonus;
   },
 
-  computePossibleXp: (totalQuestions) => {
-    // Basis-XP pro Frage: 10
-    // Zusätzliche XP für Unterfragen: 5 pro Unterfrage
-    return totalQuestions * 10;
+  computePossibleXp: async (totalQuestions: number, questions: any[]) => {
+    // Wenn bereits eine Berechnung läuft, warte
+    if (useQuizRewards.getState().isCalculatingXp) {
+      return useQuizRewards.getState().possibleRoundXp;
+    }
+
+    // Setze Berechnungsstatus
+    set({ isCalculatingXp: true });
+    
+    try {
+      let total = 0;
+      
+      // Berechne für jede Frage die möglichen XP
+      for (const q of questions) {
+        if (q.type === "cases") {
+          const { data: subs, error } = await supabase
+            .from("cases_subquestions")
+            .select("id")
+            .eq("question_id", q.id);
+          if (!error && subs) {
+            total += subs.length * 5; // 5 XP pro Unterfrage
+          }
+        }
+        total += 10; // Basis-XP pro Frage
+      }
+      
+      // Setze das Ergebnis und beende die Berechnung
+      set({ 
+        possibleRoundXp: total,
+        isCalculatingXp: false 
+      });
+      
+      return total;
+    } catch (error) {
+      console.error("Fehler bei der Berechnung der möglichen XP:", error);
+      set({ isCalculatingXp: false });
+      return totalQuestions * 10; // Fallback auf Basis-XP
+    }
   },
 
   resetRewards: () => {
@@ -95,7 +134,8 @@ export const useQuizRewards = create<QuizRewards>((set) => ({
       showRewardAnimation: false,
       rewardXp: 0,
       rewardCoins: 0,
-      isAnimationPlaying: false
+      isAnimationPlaying: false,
+      isCalculatingXp: false
     });
   }
 })); 

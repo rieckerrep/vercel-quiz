@@ -22,6 +22,7 @@ import { quizService } from "./api/quizService";
 import { Question } from "./store/useQuizStore";
 import { useQuizData } from "./hooks/quiz/useQuizData";
 import { User } from '@supabase/supabase-js';
+import { useQuizRewards } from "./hooks/quiz/useQuizRewards";
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
@@ -49,6 +50,7 @@ export function QuizContainer({
   const { playCorrectSound, playWrongSound } = useSoundStore();
   const { addXp, addCoins, incrementAnsweredQuestions, incrementCorrectAnswers, fetchUserStats } = useUserStore();
   const { submitAnswer } = useQuizData(chapterId, userId);
+  const { computePossibleXp } = useQuizRewards();
 
   // Zustand Store
   const {
@@ -146,36 +148,35 @@ export function QuizContainer({
     showRewardAnimationWithSound,
     hideRewardAnimation,
     logQuizCompleted,
-    initQuiz
+    initQuiz,
+    setChapterId
   } = useQuizStore();
 
-  // Lade Fragen beim ersten Rendern
+  // Lade Fragen beim Start
   useEffect(() => {
-    if (chapterId) {
-      initQuiz();
-    }
-  }, [chapterId, initQuiz]);
-
-  // Berechne mögliche XP
-  useEffect(() => {
-    async function calculatePossibleXp() {
-      if (!questions || questions.length === 0) return;
-      let total = 0;
-      for (const q of questions) {
-        if (q.type === "cases") {
-          const { data: subs, error } = await supabase
-            .from("cases_subquestions")
-            .select("id")
-            .eq("question_id", q.id);
-          if (!error && subs) total += subs.length * 10;
-        } else {
-          total += 10;
+    const loadQuiz = async () => {
+      try {
+        await fetchQuestions(chapterId);
+        if (questions.length > 0) {
+          setCurrentQuestion(questions[0]);
+          setCurrentQuestionIndex(0);
+          setTotalQuestions(questions.length);
+          setIsQuizActive(true);
         }
+      } catch (error) {
+        console.error('Fehler beim Laden des Quiz:', error);
       }
-      setPossibleRoundXp(total);
+    };
+
+    loadQuiz();
+  }, [chapterId, fetchQuestions, questions, setCurrentQuestion, setCurrentQuestionIndex, setTotalQuestions, setIsQuizActive]);
+
+  // Berechne mögliche XP wenn Fragen geladen sind
+  useEffect(() => {
+    if (!isLoading && questions.length > 0) {
+      computePossibleXp(questions.length, questions);
     }
-    calculatePossibleXp();
-  }, [questions, setPossibleRoundXp]);
+  }, [questions, isLoading, computePossibleXp]);
 
   // Finalisiere Quiz wenn alle Fragen beantwortet
   useEffect(() => {
@@ -184,7 +185,7 @@ export function QuizContainer({
     }
   }, [isQuizEnd, currentQuestionIndex, questions, finalizeQuiz]);
 
-  // Aktualisiere die Benutzerdaten, wenn sich XP oder Münzen ändern
+  // Aktualisiere die Benutzerdaten nur bei wichtigen Änderungen
   useEffect(() => {
     if (userId) {
       fetchUserStats(userId);
@@ -284,7 +285,7 @@ export function QuizContainer({
     return (
       <div className="border border-gray-900 min-h-[600px] flex items-center justify-center">
         <div className="flex flex-col items-center">
-          <div className="w-16 h-16 border-4 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
+          <div className="w-16 h-16 border-4 border-black border-t-transparent rounded-full mb-4 animate-spin"></div>
           <p className="text-xl">Fragen werden geladen...</p>
         </div>
       </div>
@@ -293,10 +294,6 @@ export function QuizContainer({
 
   if (questions.length === 0) {
     return <div className="border border-gray-900 min-h-[600px] flex items-center justify-center text-xl">Keine Fragen verfügbar.</div>;
-  }
-
-  if (possibleRoundXp === 0) {
-    return <div className="border border-gray-900 min-h-[600px] flex items-center justify-center text-xl">Berechne mögliche XP...</div>;
   }
 
   if (isQuizEnd || currentQuestionIndex >= questions.length) {
