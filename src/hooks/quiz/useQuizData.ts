@@ -51,8 +51,9 @@ export const useQuestions = (chapterId: number) => {
     staleTime: 5 * 60 * 1000, // 5 Minuten
     gcTime: 60 * 60 * 1000, // 1 Stunde
     refetchOnWindowFocus: false,
-    retry: 2,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000)
+    retry: 1, // Reduzierte Wiederholungsversuche
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    enabled: !!chapterId // Nur ausführen wenn chapterId vorhanden
   });
 };
 
@@ -73,90 +74,103 @@ export const useAnsweredQuestions = (userId: string) => {
         answered_at: answer.answered_at || new Date().toISOString()
       }));
     },
-    staleTime: 2 * 60 * 1000, // 2 Minuten
+    staleTime: 5 * 60 * 1000, // 5 Minuten
     gcTime: 30 * 60 * 1000, // 30 Minuten
-    refetchOnWindowFocus: true
+    refetchOnWindowFocus: false,
+    enabled: !!userId // Nur ausführen wenn userId vorhanden
   });
 };
 
-export const useSaveAnswer = () => {
+export const useSaveAnswers = () => {
   const queryClient = useQueryClient();
-
+  
   return useMutation({
-    mutationFn: async ({ questionId, isCorrect, userId, chapterId }: { questionId: number; isCorrect: boolean; userId: string; chapterId: number }) => {
+    mutationFn: async (answers: Array<{ questionId: number; isCorrect: boolean; userId: string; chapterId: number }>) => {
       const { data, error } = await supabase
         .from('answered_questions')
-        .insert([
-          {
-            question_id: questionId,
-            is_correct: isCorrect,
-            user_id: userId,
-            answered_at: new Date().toISOString(),
-            chapter_id: chapterId
-          },
-        ])
-        .select()
-        .single();
+        .insert(answers.map(answer => ({
+          question_id: answer.questionId,
+          is_correct: answer.isCorrect,
+          user_id: answer.userId,
+          answered_at: new Date().toISOString(),
+          chapter_id: answer.chapterId
+        })))
+        .select();
 
       if (error) throw error;
       return data;
     },
-    onMutate: async ({ questionId, isCorrect, userId, chapterId }) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.answeredQuestions(userId) });
-      const previousAnswers = queryClient.getQueryData<QuizAnswer[]>(queryKeys.answeredQuestions(userId)) || [];
-      
-      queryClient.setQueryData<QuizAnswer[]>(queryKeys.answeredQuestions(userId), (old) => [
-        ...(old || []),
-        {
-          id: Date.now(),
-          question_id: questionId,
-          user_id: userId,
-          is_correct: isCorrect,
-          answered_at: new Date().toISOString(),
-          chapter_id: chapterId
-        }
-      ]);
-
-      return { previousAnswers };
-    },
-    onError: (_, { userId }, context) => {
-      if (context?.previousAnswers) {
-        queryClient.setQueryData(queryKeys.answeredQuestions(userId), context.previousAnswers);
+    onSuccess: (_, variables) => {
+      // Nur die relevanten Queries invalidieren
+      const userId = variables[0]?.userId;
+      if (userId) {
+        queryClient.invalidateQueries({ 
+          queryKey: queryKeys.answeredQuestions(userId),
+          exact: true 
+        });
       }
-    },
-    onSuccess: (_, { userId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.answeredQuestions(userId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.userStatsByUser(userId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.quizAnswersByUser(userId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.quizProgress(userId) });
-    },
+    }
   });
 };
 
-export const useSaveSubAnswer = () => {
+export const useSaveSubAnswers = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ subQuestionId, isCorrect, userId, chapterId }: { 
-      subQuestionId: number; 
-      isCorrect: boolean; 
-      userId: string;
-      chapterId: number;
-    }) => {
+    mutationFn: async (answers: Array<{ subQuestionId: number; isCorrect: boolean; userId: string; chapterId: number }>) => {
       const { error } = await supabase
         .from('answered_cases_subquestions')
-        .insert({
-          subquestion_id: subQuestionId,
-          user_id: userId,
-          is_correct: isCorrect,
+        .insert(answers.map(answer => ({
+          subquestion_id: answer.subQuestionId,
+          user_id: answer.userId,
+          is_correct: answer.isCorrect,
           answered_at: new Date().toISOString()
-        });
+        })));
 
       if (error) throw error;
     },
-    onSuccess: (_, { userId, chapterId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.answeredSubQuestionsByUser(userId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.quizProgress(userId) });
+    onSuccess: (_, variables) => {
+      const userId = variables[0]?.userId;
+      if (userId) {
+        queryClient.invalidateQueries({ 
+          queryKey: queryKeys.answeredSubQuestionsByUser(userId),
+          exact: true 
+        });
+      }
+    }
+  });
+};
+
+export const useUpdateXP = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ userId, amount }: { userId: string; amount: number }) => {
+      const { data: currentStats, error: fetchError } = await supabase
+        .from('user_stats')
+        .select('total_xp')
+        .eq('user_id', userId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const newTotalXP = (currentStats?.total_xp || 0) + amount;
+      
+      const { error } = await supabase
+        .from('user_stats')
+        .update({ 
+          total_xp: newTotalXP,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+    },
+    onSuccess: (_, { userId }) => {
+      queryClient.invalidateQueries({ 
+        queryKey: queryKeys.userStatsByUser(userId),
+        exact: true 
+      });
     }
   });
 };
@@ -204,37 +218,6 @@ export const useCompleteQuiz = () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.userStatsByUser(userId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.quizProgress(userId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.answeredQuestionsByUser(userId) });
-    }
-  });
-};
-
-export const useAddXP = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async ({ userId, amount }: { userId: string; amount: number }) => {
-      const { data: currentStats, error: fetchError } = await supabase
-        .from('user_stats')
-        .select('total_xp')
-        .eq('user_id', userId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      const newTotalXP = (currentStats?.total_xp || 0) + amount;
-      
-      const { error } = await supabase
-        .from('user_stats')
-        .update({ 
-          total_xp: newTotalXP,
-          updated_at: new Date().toISOString()
-        })
-        .eq('user_id', userId);
-
-      if (error) throw error;
-    },
-    onSuccess: (_, { userId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.userStatsByUser(userId) });
     }
   });
 };
