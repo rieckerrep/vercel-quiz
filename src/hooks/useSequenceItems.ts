@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { Database } from "../lib/supabase";
+
+type SequenceItemRow = Database['public']['Tables']['sequence_items']['Row'];
 
 // Definiert die Struktur eines SequenceItems für die Anwendung
 export interface SequenceItem {
@@ -30,7 +33,7 @@ export function useSequenceItems(questionId: number) {
         .from("sequence_items")
         .select("*")
         .eq("question_id", questionId)
-        .order("position");
+        .order("correct_position");
 
       if (error) {
         console.error("Error fetching sequence items:", error);
@@ -38,7 +41,11 @@ export function useSequenceItems(questionId: number) {
       }
 
       if (data) {
-        setItems(data.map((item) => item.text));
+        // Filtere null-Werte heraus und wandle die übrigen in strings um
+        const validItems = data
+          .map(item => item.text)
+          .filter((text): text is string => text !== null);
+        setItems(validItems);
       }
     } finally {
       setLoading(false);

@@ -442,6 +442,52 @@ export const userService = {
       return { data, error };
     });
   },
+
+  /**
+   * XP für eine Runde berechnen und vergeben
+   */
+  calculateAndAwardXp: async (userId: string, correctAnswers: number): Promise<ApiResponse<number>> => {
+    return apiCall(async () => {
+      try {
+        // Berechne XP (10 XP pro richtige Antwort)
+        const xpEarned = correctAnswers * 10;
+
+        // Hole aktuelle XP
+        const { data: currentStats, error: fetchError } = await supabase
+          .from('user_stats')
+          .select('total_xp')
+          .eq('user_id', userId)
+          .single();
+
+        if (fetchError) {
+          console.error('Fehler beim Abrufen der aktuellen XP:', fetchError);
+          return { data: 0, error: fetchError };
+        }
+
+        const currentXp = currentStats?.total_xp || 0;
+        const newXp = currentXp + xpEarned;
+
+        // Aktualisiere die Benutzerstatistiken
+        const { error } = await supabase
+          .from('user_stats')
+          .update({
+            total_xp: newXp,
+            last_played: new Date().toISOString()
+          })
+          .eq('user_id', userId);
+
+        if (error) {
+          console.error('Fehler beim Aktualisieren der XP:', error);
+          return { data: 0, error };
+        }
+
+        return { data: xpEarned, error: null };
+      } catch (error) {
+        console.error('Unerwarteter Fehler bei der XP-Berechnung:', error);
+        return { data: 0, error: error as Error };
+      }
+    });
+  },
 };
 
 export default userService; 

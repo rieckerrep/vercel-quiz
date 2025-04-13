@@ -8,9 +8,9 @@ import { Database } from "./lib/supabase";
 
 /** Datenstrukturen **/
 interface Profile {
-  username: string;
-  university: string;
-  avatar_url: string;
+  username: string | null;
+  university: string | null;
+  avatar_url: string | null;
 }
 
 interface UserStats {
@@ -25,15 +25,16 @@ interface UserStats {
 
 interface LevelData {
   id: number;
-  level_title: string; // Aus DB: Spalte "level_title"
+  level_image: string | null;
+  level_number: number;
+  level_title: string | null;
   xp_required: number;
-  level_image: string;
 }
 
 interface LeagueData {
   id: number;
+  league_img: string | null;
   name: string;
-  league_img: string;
 }
 
 interface ProfileScreenProps {

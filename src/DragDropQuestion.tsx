@@ -191,14 +191,28 @@ export default function DragDropQuestion({
   useEffect(() => {
     async function loadPairs() {
       if (!group) return;
-      const { data, error } = await supabase
-        .from("dragdrop_pairs")
-        .select("*")
-        .eq("group_id", group.id);
+      const { data: pairs, error } = await supabase
+        .from('dragdrop_pairs')
+        .select('*')
+        .eq('group_id', group.id);
+
       if (error) {
-        console.error("Fehler beim Laden der DragDrop-Paare:", error);
-      } else if (data) {
-        setPairs(data);
+        console.error('Fehler beim Laden der Paare:', error);
+        return;
+      }
+
+      if (pairs) {
+        // Filtere null-Werte heraus und konvertiere zu DragPair
+        const validPairs = pairs
+          .filter(pair => pair.drag_text !== null && pair.correct_match !== null)
+          .map(pair => ({
+            id: pair.id,
+            drag_text: pair.drag_text as string,
+            correct_match: pair.correct_match as string,
+            group_id: pair.group_id
+          }));
+        
+        setPairs(validPairs);
       }
       setLoading(false);
     }

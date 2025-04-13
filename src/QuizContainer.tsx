@@ -138,8 +138,6 @@ export function QuizContainer({
     showLevelUpAnimation,
     setShowLevelUpAnimation,
     checkQuizEnd,
-    updateUserStats,
-    handleQuestionNavigation,
     calculateProgress,
     handleNavigation,
     getAnsweredQuestions,
@@ -310,25 +308,26 @@ export function QuizContainer({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
 
-      // Berechne und vergebe XP im Backend
-      const { data: roundXp, error } = await supabase.rpc('calculate_and_award_xp', {
-        p_user_id: session.user.id,
-        p_correct_answers: correctAnswers,
-        p_question_ids: questions.map(q => q.id)
-      });
+      // Berechne und vergebe XP
+      const { data: xpEarned, error } = await userService.calculateAndAwardXp(session.user.id, correctAnswers);
 
       if (error) {
-        console.error("Fehler bei der XP-Berechnung:", error);
+        console.error('Fehler beim Berechnen der XP:', error);
         return;
       }
 
-      // Aktualisiere den lokalen State
-      if (typeof roundXp === 'number') {
-        setRoundXp(roundXp);
+      // Aktualisiere die Benutzerstatistiken
+      await incrementAnsweredQuestions();
+      await incrementCorrectAnswers();
+      await fetchUserStats(session.user.id);
+
+      // Setze die verdienten XP
+      if (typeof xpEarned === 'number') {
+        setRoundXp(xpEarned);
       }
 
     } catch (error) {
-      console.error("Fehler beim Speichern der Runden-Ergebnisse:", error);
+      console.error('Fehler beim Abschließen der Runde:', error);
     }
   };
 
