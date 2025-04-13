@@ -1,10 +1,10 @@
 // LoginScreen.tsx
 import React, { useEffect, useState, useRef } from "react";
-import { supabase } from "./supabaseClient";
+import { supabase } from "./lib/supabaseClient";
 import { motion } from "framer-motion";
 import "./LoginScreen.css";
 import { authService } from "./api/authService";
-import { Database } from "./types/supabase";
+import { Database } from "./lib/supabase";
 
 interface LoginScreenProps {
   onLogin: (userId: string) => void;

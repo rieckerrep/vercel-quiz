@@ -1,22 +1,34 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '../supabaseClient';
-import { Database } from '../types/supabase';
+import { supabase } from '../lib/supabaseClient';
+import { Database } from '../lib/supabase';
+import { PostgrestFilterBuilder } from '@supabase/postgrest-js';
 
-// Definiere einen Typ, der alle Tabellennamen als String akzeptiert
-// Das ist nötig, da TypeScript strenge Typisierung für die Tabellennamen verlangt,
-// wir aber dynamische Anfragen über verschiedene Tabellen machen wollen
-export type AnyTable = keyof Database['public']['Tables'] | string;
+// Definiere einen Typ für alle verfügbaren Tabellennamen
+export type TableName = keyof Database['public']['Tables'];
+
+// Definiere Typen für die Tabellendaten
+type TableRow<T extends TableName> = Database['public']['Tables'][T]['Row'];
+type TableInsert<T extends TableName> = Database['public']['Tables'][T]['Insert'];
+type TableUpdate<T extends TableName> = Database['public']['Tables'][T]['Update'];
+
+// Definiere den Typ für die Filterbuilder-Rückgabe
+type FilterBuilder<T extends TableName> = PostgrestFilterBuilder<
+  Database['public'],
+  TableRow<T>,
+  TableRow<T>[],
+  any
+>;
 
 /**
  * Hook zum Zugriff auf eine Supabase-Tabelle
  * @param tableName Name der Tabelle in der Supabase-Datenbank
  * @param options Optionen für die Datenabfrage
  */
-export function useSupabaseTable(
-  tableName: AnyTable,
+export function useSupabaseTable<T extends TableName>(
+  tableName: T,
   options?: {
-    where?: { column: string; value: any }[];
-    orderBy?: { column: string; ascending?: boolean };
+    where?: { column: keyof TableRow<T>; value: any }[];
+    orderBy?: { column: keyof TableRow<T>; ascending?: boolean };
     limit?: number;
     queryKey?: any[];
     single?: boolean;
@@ -33,22 +45,22 @@ export function useSupabaseTable(
   const getTableData = async () => {
     console.log(`[useSupabaseTable] Executing query for: ${tableName}`);
     
-    let query = supabase.from(tableName).select(options?.columns || '*');
+    let query = supabase.from(tableName).select(options?.columns || '*') as FilterBuilder<T>;
 
     // Filterkriterien anwenden
     if (options?.where && options.where.length > 0) {
       console.log("[useSupabaseTable] Applying filters:", options.where);
       options.where.forEach(filter => {
-        query = query.eq(filter.column, filter.value) as any;
+        query = query.eq(String(filter.column), filter.value) as FilterBuilder<T>;
       });
     }
 
     // Sortierkriterien anwenden
     if (options?.orderBy) {
       console.log("[useSupabaseTable] Applying orderBy:", options.orderBy);
-      query = query.order(options.orderBy.column, { 
+      query = query.order(String(options.orderBy.column), { 
         ascending: options.orderBy.ascending ?? true 
-      });
+      }) as FilterBuilder<T>;
     }
 
     // Limit anwenden
@@ -77,7 +89,7 @@ export function useSupabaseTable(
         throw new Error(result.error.message);
       }
       
-      return result.data;
+      return (result.data || []) as unknown as TableRow<T>[];
     } catch (e) {
       console.error("[useSupabaseTable] Exception in query:", e);
       throw e;
@@ -85,7 +97,7 @@ export function useSupabaseTable(
   };
 
   // Daten abrufen mit useQuery
-  const query = useQuery({
+  const query = useQuery<TableRow<T>[]>({
     queryKey,
     queryFn: getTableData,
     staleTime: 60 * 1000, // 1 Minute cache
@@ -93,14 +105,14 @@ export function useSupabaseTable(
 
   // Insert Mutation
   const insertMutation = useMutation({
-    mutationFn: async (newItem: any) => {
+    mutationFn: async (newItem: TableInsert<T>) => {
       const { data, error } = await supabase
         .from(tableName)
-        .insert(newItem)
+        .insert(newItem as any)
         .select();
 
       if (error) throw new Error(error.message);
-      return data?.[0];
+      return (data?.[0] || null) as unknown as TableRow<T>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
@@ -109,15 +121,15 @@ export function useSupabaseTable(
 
   // Update Mutation
   const updateMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: number | string; updates: any }) => {
+    mutationFn: async ({ id, updates }: { id: number; updates: TableUpdate<T> }) => {
       const { data, error } = await supabase
         .from(tableName)
-        .update(updates)
-        .eq('id', id)
+        .update(updates as any)
+        .eq('id' as any, id)
         .select();
 
       if (error) throw new Error(error.message);
-      return data?.[0];
+      return (data?.[0] || null) as unknown as TableRow<T>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
@@ -126,11 +138,11 @@ export function useSupabaseTable(
 
   // Delete Mutation
   const deleteMutation = useMutation({
-    mutationFn: async (id: number | string) => {
+    mutationFn: async (id: number) => {
       const { error } = await supabase
         .from(tableName)
         .delete()
-        .eq('id', id);
+        .eq('id' as any, id);
 
       if (error) throw new Error(error.message);
       return id;

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { supabase } from "./supabaseClient";
+import { supabase } from "./lib/supabaseClient";
 import { motion } from "framer-motion";
 import { goldMedal, silverMedal, bronzeMedal, scaleIcon } from "./assets/images";
 import "./EndScreen.css";
+import { useUserStore } from "./store/useUserStore";
 
 export interface EndScreenProps {
   roundXp: number;
@@ -19,8 +20,8 @@ export interface EndScreenProps {
 
 interface Profile {
   username: string;
-  university: string;
-  avatar_url: string;
+  university: string | null;
+  avatar_url: string | null;
 }
 
 interface UserStats {
@@ -34,15 +35,15 @@ interface UserStats {
 
 interface LevelData {
   id: number;
-  level_title: string;
+  level_title: string | null;
   xp_required: number;
-  level_image: string;
+  level_image: string | null;
 }
 
 interface LeagueData {
   id: number;
   name: string;
-  league_img: string;
+  league_img: string | null;
 }
 
 export default function EndScreen({
@@ -57,15 +58,97 @@ export default function EndScreen({
   onOpenProfile,
   correctAnswers,
 }: EndScreenProps) {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [userStats, setUserStats] = useState<UserStats | null>(null);
+  const [levelData, setLevelData] = useState<LevelData | null>(null);
+  const [leagueData, setLeagueData] = useState<LeagueData | null>(null);
+  const userId = useUserStore((state) => state.profile?.id);
+
+  const fetchProfile = async () => {
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('username, university, avatar_url')
+        .eq('id', userId ?? '')
+        .single();
+
+      if (error) throw error;
+
+      if (profile) {
+        setProfile({
+          username: profile.username || 'Unbekannter Benutzer',
+          university: profile.university,
+          avatar_url: profile.avatar_url
+        });
+      }
+    } catch (error) {
+      console.error('Fehler beim Laden des Profils:', error);
+    }
+  };
+
+  const fetchUserStats = async () => {
+    try {
+      const { data: stats, error } = await supabase
+        .from('user_stats')
+        .select('*')
+        .eq('user_id', userId ?? '')
+        .single();
+
+      if (error) throw error;
+
+      if (stats) {
+        const newStats = {
+          gold: stats.gold_medals ?? 0,
+          silver: stats.silver_medals ?? 0,
+          bronze: stats.bronze_medals ?? 0,
+          total_xp: stats.total_xp ?? 0,
+          level: stats.level ?? 1,
+          current_league: stats.current_league ?? 'Bronze'
+        };
+
+        setUserStats(newStats);
+
+        // Medaillen-Zähler direkt setzen
+        setAnimatedMedalCounts({
+          gold: newStats.gold ?? 0,
+          silver: newStats.silver ?? 0,
+          bronze: newStats.bronze ?? 0,
+        });
+      }
+    } catch (error) {
+      console.error('Fehler beim Laden der Benutzerstatistiken:', error);
+    }
+  };
+
+  const renderMedalCounts = () => {
+    const targetCounts = userStats;
+    if (!targetCounts) return null;
+
+    const gold = targetCounts.gold ?? 0;
+    const silver = targetCounts.silver ?? 0;
+    const bronze = targetCounts.bronze ?? 0;
+
+    return (
+      <div className="medal-counts">
+        <div className="medal-count">
+          <img src={goldMedal} alt="Gold" />
+          <span>{gold}</span>
+        </div>
+        <div className="medal-count">
+          <img src={silverMedal} alt="Silber" />
+          <span>{silver}</span>
+        </div>
+        <div className="medal-count">
+          <img src={bronzeMedal} alt="Bronze" />
+          <span>{bronze}</span>
+        </div>
+      </div>
+    );
+  };
+
   // Halbkreis-Animation (rechte Seite)
   const [circleDash, setCircleDash] = useState(0);
   const halfCircleCircumference = 50.265;
-
-  // Profil + Stats laden (für Levelnamen, etc.)
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [stats, setStats] = useState<UserStats | null>(null);
-  const [levelData, setLevelData] = useState<LevelData | null>(null);
-  const [leagueData, setLeagueData] = useState<LeagueData | null>(null);
 
   // Kreis-Fortschritt für nächstes Level
   const circleCircumference = 100;
@@ -120,61 +203,20 @@ export default function EndScreen({
 
   // 1) Profil + Stats laden
   useEffect(() => {
-    (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.user) return;
-      const user = session.user;
-
-      // Profil laden
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("username, university, avatar_url")
-        .eq("id", user.id)
-        .maybeSingle();
-      setProfile(profileData || null);
-
-      // User-Stats laden
-      const { data: statsData } = await supabase
-        .from("user_stats")
-        .select(
-          "gold_medals, silver_medals, bronze_medals, total_xp, level, current_league"
-        )
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (statsData) {
-        // Stats setzen
-        setStats({
-          gold: statsData.gold_medals || 0,
-          silver: statsData.silver_medals || 0,
-          bronze: statsData.bronze_medals || 0,
-          total_xp: statsData.total_xp || 0,
-          level: statsData.level || 1,
-          current_league: statsData.current_league || "Holzliga",
-        });
-
-        // Medaillen-Zähler direkt setzen
-        setAnimatedMedalCounts({
-          gold: statsData.gold_medals || 0,
-          silver: statsData.silver_medals || 0,
-          bronze: statsData.bronze_medals || 0,
-        });
-      }
-    })();
+    fetchProfile();
+    fetchUserStats();
   }, []);
 
   // 2) Level + Liga laden
   useEffect(() => {
-    if (!stats) return;
+    if (!userStats) return;
     (async () => {
       try {
         // Level laden
         const { data: levelRows, error: levelError } = await supabase
           .from("levels")
           .select("id, level_title, xp_required, level_image")
-          .eq("id", stats.level)
+          .eq("id", userStats.level)
           .single();
 
         if (levelError) {
@@ -190,7 +232,7 @@ export default function EndScreen({
         const { data: leagueRows, error: leagueError } = await supabase
           .from("leagues")
           .select("id, name, league_img")
-          .eq("name", stats.current_league)
+          .eq("name", userStats.current_league)
           .single();
 
         if (leagueError) {
@@ -205,12 +247,12 @@ export default function EndScreen({
         console.error("Fehler beim Laden der Daten:", error);
       }
     })();
-  }, [stats]);
+  }, [userStats]);
 
   // 3) Kreis-Fortschritt (nächstes Level)
   useEffect(() => {
     (async () => {
-      if (!levelData || !stats) return;
+      if (!levelData || !userStats) return;
       const nextLevelId = levelData.id + 1;
       const { data: nextLevel } = await supabase
         .from("levels")
@@ -220,7 +262,7 @@ export default function EndScreen({
       const xpRequiredNext = Math.round(nextLevel?.xp_required ?? levelData.xp_required + 100);
       setNextLevelXP(xpRequiredNext);
 
-      const xpNow = Math.round(stats.total_xp);
+      const xpNow = Math.round(userStats.total_xp);
       const xpCurrentLevel = Math.round(levelData.xp_required);
       const xpNeededThisLevel = xpNow - xpCurrentLevel;
       const xpNeededForNext = xpRequiredNext - xpCurrentLevel;
@@ -242,19 +284,19 @@ export default function EndScreen({
       }, 20);
       return () => clearInterval(timer);
     })();
-  }, [levelData, stats]);
+  }, [levelData, userStats]);
 
   // Initialisiere previousLevel beim ersten Laden
   useEffect(() => {
-    if (stats?.level && previousLevel === null) {
-      setPreviousLevel(stats.level - 1); // Setze auf vorheriges Level für erste Animation
+    if (userStats?.level && previousLevel === null) {
+      setPreviousLevel(userStats.level - 1); // Setze auf vorheriges Level für erste Animation
     }
-  }, [stats?.level]);
+  }, [userStats?.level]);
 
   // Prüfe auf Level-Up
   useEffect(() => {
-    if (stats?.level && previousLevel !== null && stats.level > previousLevel) {
-      console.log('Level Up!', { current: stats.level, previous: previousLevel }); // Debug-Log
+    if (userStats?.level && previousLevel !== null && userStats.level > previousLevel) {
+      console.log('Level Up!', { current: userStats.level, previous: previousLevel }); // Debug-Log
       setIsLevelUp(true);
       // Sound abspielen
       const levelUpSound = new Audio("/sounds/level-up.mp3");
@@ -263,14 +305,14 @@ export default function EndScreen({
       // Animation nach 3 Sekunden ausblenden
       setTimeout(() => {
         setIsLevelUp(false);
-        setPreviousLevel(stats.level); // Update previousLevel nach der Animation
+        setPreviousLevel(userStats.level); // Update previousLevel nach der Animation
       }, 3000);
     }
-  }, [stats?.level, previousLevel]);
+  }, [userStats?.level, previousLevel]);
 
   // Animation bei Medaillen-Zähler und Datenbankaktualisierung
   useEffect(() => {
-    if (!stats) return;
+    if (!userStats) return;
     if (["Gold", "Silber", "Bronze"].includes(medalType)) {
       // Datenbank aktualisieren
       (async () => {
@@ -283,59 +325,62 @@ export default function EndScreen({
         let currentValue = 0;
         if (medalType === "Gold") {
           updateField = "gold_medals";
-          currentValue = stats.gold;
+          currentValue = userStats.gold;
         } else if (medalType === "Silber") {
           updateField = "silver_medals";
-          currentValue = stats.silver;
+          currentValue = userStats.silver;
         } else if (medalType === "Bronze") {
           updateField = "bronze_medals";
-          currentValue = stats.bronze;
+          currentValue = userStats.bronze;
         }
 
         // Datenbank aktualisieren
-        const { data: updatedStats } = await supabase
+        const { data: updatedStats, error } = await supabase
           .from("user_stats")
           .update({ [updateField]: currentValue + 1 })
           .eq("user_id", session.user.id)
           .select()
           .single();
 
-        // Stats und Animation aktualisieren
-        if (updatedStats) {
-          setStats(prev => ({
-            ...prev!,
-            gold: updatedStats.gold_medals,
-            silver: updatedStats.silver_medals,
-            bronze: updatedStats.bronze_medals,
-          }));
+        if (error) {
+          console.error("Fehler beim Aktualisieren der Medaillen:", error);
+          return;
+        }
 
-          // Animation starten
-          const duration = 1000;
-          const steps = 20;
-          const intervalTime = duration / steps;
-          let step = 0;
-          const startCounts = { ...animatedMedalCounts };
-          const targetCounts = {
-            gold: updatedStats.gold_medals,
-            silver: updatedStats.silver_medals,
-            bronze: updatedStats.bronze_medals,
+        if (updatedStats) {
+          const startCounts = {
+            gold: userStats.gold,
+            silver: userStats.silver,
+            bronze: userStats.bronze,
           };
+
+          const targetCounts = {
+            gold: medalType === "Gold" ? startCounts.gold + 1 : startCounts.gold,
+            silver: medalType === "Silber" ? startCounts.silver + 1 : startCounts.silver,
+            bronze: medalType === "Bronze" ? startCounts.bronze + 1 : startCounts.bronze,
+          };
+
+          const steps = 20;
+          const intervalTime = 50;
+          let step = 0;
 
           const timer = setInterval(() => {
             step++;
+            const goldDiff = targetCounts.gold - startCounts.gold;
+            const silverDiff = targetCounts.silver - startCounts.silver;
+            const bronzeDiff = targetCounts.bronze - startCounts.bronze;
+            
             setAnimatedMedalCounts({
-              gold: Math.round(startCounts.gold + ((targetCounts.gold - startCounts.gold) * step) / steps),
-              silver: Math.round(startCounts.silver + ((targetCounts.silver - startCounts.silver) * step) / steps),
-              bronze: Math.round(startCounts.bronze + ((targetCounts.bronze - startCounts.bronze) * step) / steps),
+              gold: Math.round(startCounts.gold + (goldDiff * step) / steps),
+              silver: Math.round(startCounts.silver + (silverDiff * step) / steps),
+              bronze: Math.round(startCounts.bronze + (bronzeDiff * step) / steps),
             });
             if (step >= steps) clearInterval(timer);
           }, intervalTime);
-
-          return () => clearInterval(timer);
         }
       })();
     }
-  }, [medalType]);
+  }, [medalType, userStats]);
 
   // Level-Up Animation Komponente
   const LevelUpAnimation = () => (
@@ -356,7 +401,7 @@ export default function EndScreen({
         <div className="text-6xl mb-4">🎉</div>
         <h2 className="text-3xl font-bold text-white mb-2">Level Up!</h2>
         <p className="text-xl text-white">
-          Glückwunsch! Du bist jetzt Level {stats?.level}!
+          Glückwunsch! Du bist jetzt Level {userStats?.level}!
         </p>
         <motion.div
           className="mt-4"
@@ -369,7 +414,7 @@ export default function EndScreen({
     </motion.div>
   );
 
-  if (!profile || !stats) {
+  if (!profile || !userStats) {
     return (
       <div className="quiz-container min-h-[600px] bg-[#151923] rounded-lg shadow-lg flex items-center justify-center">
         <motion.div 
@@ -390,7 +435,7 @@ export default function EndScreen({
 
   const questionsCorrect = correctAnswers;
   const levelName = levelData?.level_title || "Unbekannter Level";
-  const xpNow = stats.total_xp;
+  const xpNow = userStats.total_xp;
   const xpNext = nextLevelXP ?? (levelData?.xp_required ?? 0) + 100;
 
   // Medaillen-URLs
@@ -455,7 +500,7 @@ export default function EndScreen({
               transition={{ type: "spring", delay: 0.5 }}
             >
               <img
-                src={profile.avatar_url}
+                src={profile?.avatar_url ?? undefined}
                 alt="Avatar"
                 className="w-full h-full object-cover"
               />
@@ -502,9 +547,9 @@ export default function EndScreen({
             </svg>
             
             <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
-              <div className="text-lg font-bold">Lvl {stats.level}</div>
+              <div className="text-lg font-bold">Lvl {userStats.level}</div>
               <div className="text-xs">
-                {Math.round(stats.total_xp).toLocaleString()} / {Math.round(nextLevelXP || 0).toLocaleString()} XP
+                {Math.round(userStats.total_xp).toLocaleString()} / {Math.round(nextLevelXP || 0).toLocaleString()} XP
               </div>
             </div>
           </div>

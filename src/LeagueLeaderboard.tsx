@@ -1,9 +1,9 @@
 // src/components/LeagueLeaderboard.tsx
 import { useEffect, useState } from "react";
-import { supabase } from "./supabaseClient";
+import { supabase } from "./lib/supabaseClient";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { Database } from "./types/supabase";
+import { Database } from "./lib/supabase";
 import logoSchwarz from "./assets/images/Bilder/logo-schwarz.svg";
 
 type LeagueRow = {

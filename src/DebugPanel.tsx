@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { useQuiz } from "./QuizContext";
-import { useQuestions } from "./useQuestions";
 import { quizLogger } from "./EventLogger";
+import { useQuiz } from "./context/QuizProvider";
+import { useQuestions } from "@/hooks/quiz/core/useQuestions";
+import { useQuizStore } from "./store/useQuizStore";
 
 interface DebugPanelProps {
   isVisible: boolean;
@@ -10,14 +11,15 @@ interface DebugPanelProps {
 }
 
 const DebugPanel: React.FC<DebugPanelProps> = ({ isVisible, chapterId, userId }) => {
+  const { questions } = useQuiz();
   const { 
-    currentIndex, 
-    roundXp, 
-    roundCoins, 
-    possibleRoundXp 
-  } = useQuiz();
+    currentQuestionIndex: currentIndex,
+    roundXp,
+    roundCoins,
+    possibleRoundXp
+  } = useQuizStore();
   
-  const { data: questions, isLoading: questionsLoading } = useQuestions(chapterId);
+  const { data: questionsData, isLoading: questionsLoading } = useQuestions(chapterId);
   const [events, setEvents] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'status' | 'events'>('status');
   
@@ -67,7 +69,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ isVisible, chapterId, userId })
           <div>
             <h3 className="text-sm font-bold">Quiz Status:</h3>
             <ul className="text-xs">
-              <li>Frage: {currentIndex + 1} / {questions?.length || 0}</li>
+              <li>Frage: {currentIndex + 1} / {questionsData?.length || 0}</li>
               <li>XP: {roundXp} / {possibleRoundXp} ({Math.round((roundXp / possibleRoundXp || 1) * 100)}%)</li>
               <li>Münzen: {roundCoins}</li>
             </ul>
@@ -77,15 +79,15 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ isVisible, chapterId, userId })
             <h3 className="text-sm font-bold">Aktuelle Frage:</h3>
             {questionsLoading ? (
               <p>Lädt...</p>
-            ) : !questions || questions.length === 0 ? (
+            ) : !questionsData || questionsData.length === 0 ? (
               <p>Keine Fragen verfügbar</p>
-            ) : currentIndex >= questions.length ? (
+            ) : currentIndex >= questionsData.length ? (
               <p>Ende erreicht</p>
             ) : (
               <div className="text-xs">
-                <p>Typ: {questions[currentIndex].type}</p>
-                <p>ID: {questions[currentIndex].id}</p>
-                <p>Richtige Antwort: {questions[currentIndex]["Richtige Antwort"] || "N/A"}</p>
+                <p>Typ: {questionsData[currentIndex].type}</p>
+                <p>ID: {questionsData[currentIndex].id}</p>
+                <p>Richtige Antwort: {questionsData[currentIndex]["Richtige Antwort"] || "N/A"}</p>
               </div>
             )}
           </div>

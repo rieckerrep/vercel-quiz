@@ -1,6 +1,6 @@
-import { supabase } from '../supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 import { apiCall, ApiResponse } from './apiClient';
-import { Database } from '../types/supabase';
+import { Database } from '../lib/supabase';
 import { ERROR_MESSAGES } from '../constants/errorMessages';
 import { notificationService } from '../services/notificationService';
 
@@ -161,13 +161,11 @@ export const userService = {
           .single();
 
         if (fetchError) {
-          notificationService.error(ERROR_MESSAGES.USER.STATS_UPDATE);
           console.error('Fehler beim Abrufen der Statistiken:', fetchError);
           return { data: null, error: fetchError };
         }
 
         if (!currentStats) {
-          notificationService.error(ERROR_MESSAGES.USER.STATS_UPDATE);
           return { data: null, error: new Error('Benutzerstatistiken nicht gefunden') };
         }
 
@@ -183,15 +181,11 @@ export const userService = {
           .single();
 
         if (error) {
-          notificationService.error(ERROR_MESSAGES.USER.STATS_UPDATE);
           console.error('Fehler beim Aktualisieren der Statistiken:', error);
-        } else {
-          notificationService.success(ERROR_MESSAGES.SUCCESS.STATS_UPDATED);
         }
 
         return { data, error };
       } catch (error) {
-        notificationService.error(ERROR_MESSAGES.GENERAL.UNKNOWN);
         console.error('Unerwarteter Fehler bei der Statistikaktualisierung:', error);
         return { data: null, error: error as Error };
       }
@@ -212,13 +206,11 @@ export const userService = {
           .single();
 
         if (fetchError) {
-          notificationService.error(ERROR_MESSAGES.USER.STATS_UPDATE);
           console.error('Fehler beim Abrufen der Statistiken:', fetchError);
           return { data: null, error: fetchError };
         }
 
         if (!currentStats) {
-          notificationService.error(ERROR_MESSAGES.USER.STATS_UPDATE);
           return { data: null, error: new Error('Benutzerstatistiken nicht gefunden') };
         }
 
@@ -234,15 +226,11 @@ export const userService = {
           .single();
 
         if (error) {
-          notificationService.error(ERROR_MESSAGES.USER.STATS_UPDATE);
           console.error('Fehler beim Aktualisieren der Statistiken:', error);
-        } else {
-          notificationService.success(ERROR_MESSAGES.SUCCESS.STATS_UPDATED);
         }
 
         return { data, error };
       } catch (error) {
-        notificationService.error(ERROR_MESSAGES.GENERAL.UNKNOWN);
         console.error('Unerwarteter Fehler bei der Statistikaktualisierung:', error);
         return { data: null, error: error as Error };
       }
@@ -278,12 +266,12 @@ export const userService = {
 
       // Neue Werte berechnen
       const newTotalXp = (currentStats.total_xp || 0) + totalXp;
-      const newQuizzesCompleted = (currentStats.quizzes_completed || 0) + 1;
+      const newQuizzesCompleted = (currentStats.questions_answered || 0) + 1;
       
       // Update-Objekt erstellen
       const updateData: any = {
         total_xp: newTotalXp,
-        quizzes_completed: newQuizzesCompleted
+        questions_answered: newQuizzesCompleted
       };
       
       // Medaille hinzufügen, falls vorhanden
@@ -307,7 +295,7 @@ export const userService = {
       
       // Quiz-Abschluss in der Datenbank protokollieren
       const { error: logError } = await supabase
-        .from('quiz_completions')
+        .from('answered_questions')
         .insert([
           {
             user_id: userId,
@@ -448,10 +436,56 @@ export const userService = {
   fetchSubjectBreakdown: async (userId: string): Promise<ApiResponse<any[]>> => {
     return apiCall(async () => {
       const { data, error } = await supabase.rpc('get_subject_breakdown_for_user', {
-        user_id: userId
+        _user_id: userId
       });
 
       return { data, error };
+    });
+  },
+
+  /**
+   * XP für eine Runde berechnen und vergeben
+   */
+  calculateAndAwardXp: async (userId: string, correctAnswers: number): Promise<ApiResponse<number>> => {
+    return apiCall(async () => {
+      try {
+        // Berechne XP (10 XP pro richtige Antwort)
+        const xpEarned = correctAnswers * 10;
+
+        // Hole aktuelle XP
+        const { data: currentStats, error: fetchError } = await supabase
+          .from('user_stats')
+          .select('total_xp')
+          .eq('user_id', userId)
+          .single();
+
+        if (fetchError) {
+          console.error('Fehler beim Abrufen der aktuellen XP:', fetchError);
+          return { data: 0, error: fetchError };
+        }
+
+        const currentXp = currentStats?.total_xp || 0;
+        const newXp = currentXp + xpEarned;
+
+        // Aktualisiere die Benutzerstatistiken
+        const { error } = await supabase
+          .from('user_stats')
+          .update({
+            total_xp: newXp,
+            last_played: new Date().toISOString()
+          })
+          .eq('user_id', userId);
+
+        if (error) {
+          console.error('Fehler beim Aktualisieren der XP:', error);
+          return { data: 0, error };
+        }
+
+        return { data: xpEarned, error: null };
+      } catch (error) {
+        console.error('Unerwarteter Fehler bei der XP-Berechnung:', error);
+        return { data: 0, error: error as Error };
+      }
     });
   },
 };

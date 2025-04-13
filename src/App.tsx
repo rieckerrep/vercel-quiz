@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import { QuizContainer } from "./QuizContainer";
 import { useUserStore } from './store/useUserStore';
@@ -11,7 +11,8 @@ import ProfileScreen from "./ProfileScreen";
 import ShopScreen from "./ShopScreen";
 import LeaderboardOverlay from "./LeaderboardOverlay";
 import { Toaster } from 'react-hot-toast';
-import { Database } from './types/supabase';
+import { Database } from './lib/supabase';
+import { useUserData } from './store/useUserStore';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
@@ -19,58 +20,122 @@ type UserStats = Database['public']['Tables']['user_stats']['Row'];
 // Loading-Komponente
 const LoadingScreen = () => (
   <div className="min-h-screen flex items-center justify-center text-lg">
-    Lade...
+    <div className="flex flex-col items-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mb-4"></div>
+      <p>Lade...</p>
+    </div>
   </div>
 );
 
 // Error-Komponente
-const ErrorScreen = ({ message }: { message: string }) => (
+const ErrorScreen = ({ message }: { message: string | Error }) => (
   <div className="min-h-screen flex items-center justify-center text-lg text-red-500">
-    Fehler: {message}
+    <div className="flex flex-col items-center">
+      <svg className="w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <p>Fehler: {typeof message === 'string' ? message : message.message}</p>
+      <button 
+        onClick={() => window.location.reload()} 
+        className="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+      >
+        Neu laden
+      </button>
+    </div>
   </div>
 );
 
 // Wrapper-Komponente für die Navigation
 function AppContent() {
   const navigate = useNavigate();
-  const { user, isLoading: authLoading, initAuth } = useAuthStore();
-  const { loadUserData, profile, userStats, isLoading: userLoading, error } = useUserStore();
+  const { user, isLoading: authLoading, error: authError, initAuth } = useAuthStore();
+  const { profile, userStats, isLoading: userLoading, error: userError, loadUserData } = useUserData(user?.id || '');
   const { fetchQuestions } = useQuizStore();
   const { playCorrectSound, playWrongSound } = useSoundStore();
 
-  // Auth initialisieren
+  // Auth initialisieren mit verbesserter Fehlerbehandlung
   React.useEffect(() => {
-    initAuth();
+    const initializeAuth = async () => {
+      try {
+        await initAuth();
+      } catch (error) {
+        console.error('Fehler bei der Auth-Initialisierung:', error);
+        // Optional: Hier könntest du eine Benachrichtigung anzeigen
+      }
+    };
+
+    initializeAuth();
   }, [initAuth]);
 
-  // User-Daten laden wenn sich der User ändert
+  // User-Daten laden mit verbesserter Fehlerbehandlung
   React.useEffect(() => {
-    if (user?.id) {
-      loadUserData(user.id);
-    }
+    const loadData = async () => {
+      if (user?.id) {
+        try {
+          await loadUserData();
+        } catch (error) {
+          console.error('Fehler beim Laden der Benutzerdaten:', error);
+          // Optional: Hier könntest du eine Benachrichtigung anzeigen
+        }
+      }
+    };
+
+    loadData();
   }, [user?.id, loadUserData]);
 
-  // Zeige Loading-Screen während Auth initialisiert wird
-  if (authLoading) {
-    return <LoadingScreen />;
+  // Ladezustand oder Fehler anzeigen mit verbesserter Benutzerführung
+  if (authLoading || userLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-lg">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mb-4"></div>
+          <p>Lade...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-lg text-red-500">
+        <div className="flex flex-col items-center">
+          <svg className="w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p>Fehler bei der Authentifizierung: {authError}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+          >
+            Neu laden
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (userError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-lg text-red-500">
+        <div className="flex flex-col items-center">
+          <svg className="w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p>Fehler beim Laden der Benutzerdaten: {typeof userError === 'string' ? userError : userError.message}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+          >
+            Neu laden
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Zeige Login-Screen wenn kein User vorhanden ist
   if (!user) {
-    return <LoginScreen onLogin={(userId) => loadUserData(userId)} />;
-  }
-
-  // Zeige Loading-Screen während User-Daten geladen werden
-  if (userLoading) {
-    return <LoadingScreen />;
-  }
-
-  // Zeige Error-Screen bei Fehlern
-  if (error) {
-    const errorMessage = typeof error === 'object' && error !== null && 'message' in error 
-      ? (error as { message: string }).message 
-      : String(error);
-    return <ErrorScreen message={errorMessage} />;
+    return <LoginScreen onLogin={(userId) => loadUserData()} />;
   }
 
   return (

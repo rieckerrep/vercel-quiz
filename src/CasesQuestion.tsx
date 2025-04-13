@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { supabase } from "./supabaseClient";
+import { supabase } from "./lib/supabaseClient";
 import { motion } from "framer-motion";
-import { Database } from "./types/supabase";
+import { Database } from "./lib/supabase";
 import { Question } from "./store/useQuizStore";
 
 type CasesSubquestion = Database['public']['Tables']['cases_subquestions']['Row'];

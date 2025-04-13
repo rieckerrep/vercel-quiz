@@ -1,7 +1,7 @@
 // QuestionNavigation.tsx
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "./supabaseClient";
+import { supabase } from "./lib/supabaseClient";
 import { useQuizStore, Question } from './store/useQuizStore';
 import { useEffect, useState } from "react";
 import { quizService } from "./api/quizService";

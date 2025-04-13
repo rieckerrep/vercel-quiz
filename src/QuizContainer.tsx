@@ -1,6 +1,6 @@
 // QuizContainer.tsx
-import React, { useEffect, useState, useRef } from 'react';
-import { supabase } from "./supabaseClient";
+import React, { useEffect, useState, useRef, useMemo } from 'react';
+import { supabase } from "./lib/supabaseClient";
 import QuizHeadline from "./QuizHeadline";
 import JokerPanel from "./JokerPanel";
 import CasesQuestion, { CasesQuestionResult } from "./CasesQuestion";
@@ -14,18 +14,21 @@ import { useQuizStore } from "./store/useQuizStore";
 import { useSoundStore } from "./store/useSoundStore";
 import LueckentextQuestion from "./LueckentextQuestion";
 import { motion, AnimatePresence } from "framer-motion";
-import { Database } from "./types/supabase";
+import { Database } from "./lib/supabase";
 import { useUserStore } from "./store/useUserStore";
 import { authService } from "./api/authService";
 import { userService } from "./api/userService";
 import { quizService } from "./api/quizService";
 import { Question } from "./store/useQuizStore";
+import { useQuizData } from "./hooks/quiz/useQuizData";
+import { User } from '@supabase/supabase-js';
+import { useQuizRewards } from "./hooks/quiz/useQuizRewards";
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
 
 interface QuizContainerProps {
-  user: any; // Auth user type from Supabase
+  user: User | null;
   profile: Profile;
   userStats: UserStats;
   onOpenProfile: () => void;
@@ -43,8 +46,11 @@ export function QuizContainer({
   onOpenSettings,
 }: QuizContainerProps) {
   const chapterId = 1;
+  const userId = useMemo(() => user?.id || '', [user?.id]);
   const { playCorrectSound, playWrongSound } = useSoundStore();
   const { addXp, addCoins, incrementAnsweredQuestions, incrementCorrectAnswers, fetchUserStats } = useUserStore();
+  const { submitAnswer } = useQuizData(chapterId, userId);
+  const { computePossibleXp } = useQuizRewards();
 
   // Zustand Store
   const {
@@ -131,10 +137,7 @@ export function QuizContainer({
     isQuestionAnswered,
     showLevelUpAnimation,
     setShowLevelUpAnimation,
-    computePossibleXp,
     checkQuizEnd,
-    updateUserStats,
-    handleQuestionNavigation,
     calculateProgress,
     handleNavigation,
     getAnsweredQuestions,
@@ -143,106 +146,188 @@ export function QuizContainer({
     showRewardAnimationWithSound,
     hideRewardAnimation,
     logQuizCompleted,
-    initQuiz
+    initQuiz,
+    setChapterId
   } = useQuizStore();
 
-  // Lade Fragen beim ersten Rendern
+  // Lade Fragen beim Start
   useEffect(() => {
-    if (chapterId) {
-      initQuiz();
-    }
-  }, [chapterId, initQuiz]);
-
-  // Berechne mögliche XP
-  useEffect(() => {
-    async function computeXp() {
-      if (!questions || questions.length === 0) return;
-      let total = 0;
-      for (const q of questions) {
-        if (q.type === "cases") {
-          const { data: subs, error } = await supabase
-            .from("cases_subquestions")
-            .select("id")
-            .eq("question_id", q.id);
-          if (!error && subs) total += subs.length * 10;
-        } else {
-          total += 10;
+    const loadQuiz = async () => {
+      try {
+        // Setze den Quiz-Status zurück
+        setChapterId(chapterId);
+        await initQuiz();
+        
+        if (questions.length > 0) {
+          setCurrentQuestion(questions[0]);
+          setCurrentQuestionIndex(0);
+          setTotalQuestions(questions.length);
+          setIsQuizActive(true);
+          setIsQuizEnd(false); // Stelle sicher, dass das Quiz nicht als beendet markiert ist
         }
+      } catch (error) {
+        console.error('Fehler beim Laden des Quiz:', error);
       }
-      setPossibleRoundXp(total);
-    }
-    computeXp();
-  }, [questions, setPossibleRoundXp]);
+    };
 
-  // Finalisiere Quiz wenn alle Fragen beantwortet
+    loadQuiz();
+  }, [chapterId, initQuiz, questions, setCurrentQuestion, setCurrentQuestionIndex, setTotalQuestions, setIsQuizActive, setIsQuizEnd, setChapterId]);
+
+  // Berechne mögliche XP wenn Fragen geladen sind
   useEffect(() => {
-    if (!isQuizEnd && questions && currentQuestionIndex >= questions.length) {
+    if (!isLoading && questions.length > 0) {
+      computePossibleXp(questions.length, questions);
+    }
+  }, [questions, isLoading, computePossibleXp]);
+
+  // Finalisiere Quiz nur wenn alle Fragen beantwortet sind
+  useEffect(() => {
+    if (!isQuizEnd && questions && currentQuestionIndex >= questions.length && answeredQuestions.length === questions.length) {
       finalizeQuiz();
     }
-  }, [isQuizEnd, currentQuestionIndex, questions, finalizeQuiz]);
+  }, [isQuizEnd, currentQuestionIndex, questions, finalizeQuiz, answeredQuestions]);
 
-  // Aktualisiere die Benutzerdaten, wenn sich XP oder Münzen ändern
+  // Aktualisiere die Benutzerdaten nur bei wichtigen Änderungen
   useEffect(() => {
-    if (user?.id) {
-      fetchUserStats(user.id);
+    if (userId) {
+      fetchUserStats(userId);
     }
-  }, [user?.id, roundXp, roundCoins, fetchUserStats]);
+  }, [userId, roundXp, roundCoins, fetchUserStats]);
 
   // Ersetze die Sound-Logik in den onClick-Handlern
   const handleAnswerWithSound = async (isCorrect: boolean) => {
-    if (!currentQuestion) return;
+    if (!currentQuestion || !userId) return;
     if (isAnimationPlaying) return;
     
-    // Verarbeite die Antwort
-    await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
-    await awardQuestion(currentQuestion.id, isCorrect);
-    
-    // Zeige die Animation mit Sound
-    await showRewardAnimationWithSound(isCorrect);
+    try {
+      // Speichere die Antwort in der Datenbank
+      await submitAnswer({
+        userId,
+        questionId: currentQuestion.id,
+        selectedOption: isCorrect ? "true" : "false",
+        isCorrect,
+        chapterId
+      });
+      
+      // Verarbeite die Antwort im Store
+      await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
+      await awardQuestion(currentQuestion.id, isCorrect);
+      
+      // Zeige die Animation mit Sound
+      await showRewardAnimationWithSound(isCorrect);
+    } catch (error) {
+      console.error('Fehler beim Speichern der Antwort:', error);
+    }
   };
 
   // Ersetze die Sound-Logik in den onClick-Handlern für true/false Fragen
   const handleTrueFalseWithSound = async (isTrue: boolean) => {
-    if (isAnimationPlaying) {
-      console.log("handleTrueFalseWithSound - Animation läuft bereits, Funktion wird abgebrochen");
-      return;
-    }
-    if (!currentQuestion) {
-      console.log("handleTrueFalseWithSound - Keine aktuelle Frage vorhanden, Funktion wird abgebrochen");
-      return;
-    }
+    if (!currentQuestion || !userId) return;
+    if (isAnimationPlaying) return;
 
-    console.log("handleTrueFalseWithSound aufgerufen mit isTrue:", isTrue);
-    console.log("Aktueller Zustand vor handleTrueFalseAnswer:", { 
-      isAnimationPlaying, 
-      currentQuestion: currentQuestion.id,
-      showRewardAnimation,
-      lastAnswerCorrect
-    });
-    
-    // Rufe nur handleTrueFalseAnswer auf, das bereits die Animation steuert
-    await handleTrueFalseAnswer(currentQuestion.id, isTrue);
-    
-    console.log("handleTrueFalseWithSound - Nach handleTrueFalseAnswer:", {
-      isAnimationPlaying: useQuizStore.getState().isAnimationPlaying,
-      showRewardAnimation: useQuizStore.getState().showRewardAnimation,
-      lastAnswerCorrect: useQuizStore.getState().lastAnswerCorrect
-    });
+    try {
+      // Speichere die Antwort
+      await submitAnswer({
+        userId,
+        questionId: currentQuestion.id,
+        selectedOption: isTrue ? "true" : "false",
+        isCorrect: isTrue,
+        chapterId
+      });
+      
+      // Verarbeite die Antwort im Store
+      await handleTrueFalseAnswer(currentQuestion.id, isTrue);
+    } catch (error) {
+      console.error('Fehler beim Speichern der Antwort:', error);
+    }
   };
 
   // Ersetze die Sound-Logik in den onClick-Handlern für Subfragen
   const handleSubquestionWithSound = async (subId: number, isCorrect: boolean) => {
-    if (!currentQuestion) return;
+    if (!currentQuestion || !userId) return;
     if (isAnimationPlaying) return;
     
-    // Verarbeite die Unterfrage
-    await handleSubquestionAnswered(subId, isCorrect, currentQuestion.id);
-    
-    // Spiele den Sound ab
-    if (isCorrect) {
-      await playCorrectSound();
-    } else {
-      await playWrongSound();
+    try {
+      // Verarbeite die Unterfrage
+      await handleSubquestionAnswered(subId, isCorrect, currentQuestion.id);
+      
+      // Spiele den Sound ab
+      if (isCorrect) {
+        await playCorrectSound();
+      } else {
+        await playWrongSound();
+      }
+    } catch (error) {
+      console.error('Fehler beim Verarbeiten der Unterfrage:', error);
+    }
+  };
+
+  const calculateRoundXp = async (correctAnswers: number) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return 0;
+
+      // Hole bereits beantwortete Fragen
+      const { data: answeredQuestions } = await supabase
+        .from('answered_questions')
+        .select('question_id')
+        .eq('user_id', session.user.id);
+
+      const answeredQuestionIds = answeredQuestions?.map(q => q.question_id) || [];
+      
+      // Zähle nur neu beantwortete Fragen
+      const newCorrectAnswers = correctAnswers - answeredQuestionIds.length;
+      if (newCorrectAnswers <= 0) return 0;
+
+      // Berechne XP nur für neue korrekte Antworten
+      let xp = newCorrectAnswers * 10; // Basis-XP pro Frage
+
+      // Zusätzliche XP für Fallfragen
+      const caseQuestions = questions.filter(q => q.type === "cases");
+      for (const question of caseQuestions) {
+        if (!answeredQuestionIds.includes(question.id)) {
+          const { data: subs } = await supabase
+            .from("cases_subquestions")
+            .select("id")
+            .eq("question_id", question.id);
+          if (subs) {
+            xp += subs.length * 5; // 5 XP pro Unterfrage
+          }
+        }
+      }
+
+      return xp;
+    } catch (error) {
+      console.error("Fehler bei der XP-Berechnung:", error);
+      return 0;
+    }
+  };
+
+  const handleRoundComplete = async (correctAnswers: number) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      // Berechne und vergebe XP
+      const { data: xpEarned, error } = await userService.calculateAndAwardXp(session.user.id, correctAnswers);
+
+      if (error) {
+        console.error('Fehler beim Berechnen der XP:', error);
+        return;
+      }
+
+      // Aktualisiere die Benutzerstatistiken
+      await incrementAnsweredQuestions();
+      await incrementCorrectAnswers();
+      await fetchUserStats(session.user.id);
+
+      // Setze die verdienten XP
+      if (typeof xpEarned === 'number') {
+        setRoundXp(xpEarned);
+      }
+
+    } catch (error) {
+      console.error('Fehler beim Abschließen der Runde:', error);
     }
   };
 
@@ -271,7 +356,7 @@ export function QuizContainer({
     return (
       <div className="border border-gray-900 min-h-[600px] flex items-center justify-center">
         <div className="flex flex-col items-center">
-          <div className="w-16 h-16 border-4 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
+          <div className="w-16 h-16 border-4 border-black border-t-transparent rounded-full mb-4 animate-spin"></div>
           <p className="text-xl">Fragen werden geladen...</p>
         </div>
       </div>
@@ -280,10 +365,6 @@ export function QuizContainer({
 
   if (questions.length === 0) {
     return <div className="border border-gray-900 min-h-[600px] flex items-center justify-center text-xl">Keine Fragen verfügbar.</div>;
-  }
-
-  if (possibleRoundXp === 0) {
-    return <div className="border border-gray-900 min-h-[600px] flex items-center justify-center text-xl">Berechne mögliche XP...</div>;
   }
 
   if (isQuizEnd || currentQuestionIndex >= questions.length) {

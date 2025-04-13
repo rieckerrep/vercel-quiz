@@ -1,175 +1,125 @@
-# RieckerRep Legal Quiz App
+# RieckerRep Quiz
 
-## Project Overview
-A comprehensive legal quiz application developed for RieckerRep, featuring various question types, user progression, rewards, and social features. The app is built with React and TypeScript, using Supabase as the backend.
+## 📋 Projektübersicht
+Ein juristisches Quiz-System für RieckerRep, das in Wix integriert werden kann. Das System verwendet Supabase als Backend und ist für die Integration in Wix über iFrame oder HTML optimiert.
 
-## Tech Stack
-- **Frontend**: React + TypeScript
-- **Styling**: Tailwind CSS
-- **Backend**: Supabase
-- **State Management**: React Context + Custom Hooks
-- **Animations**: Framer Motion
-- **Drag & Drop**: react-dnd
+## 🚀 Features
+- Juristisches Quiz mit verschiedenen Fragetypen
+- XP- und Medaillensystem
+- Responsive Design für Web und Mobile
+- Supabase-Backend-Integration
+- Wix-Integration über iFrame/HTML
+- Fortschrittsverfolgung und Statistiken
 
-## Project Structure
+## 🛠 Technologie-Stack
+- React
+- TypeScript
+- Zustand (State Management)
+- React Query (Data Fetching)
+- Supabase (Backend)
+- Tailwind CSS (Styling)
+
+## 📁 Projektstruktur
 ```
 src/
-├── assets/           # Static assets (images, sounds)
-├── hooks/            # Custom React hooks
-├── sql/             # Database queries and migrations
-├── types/           # TypeScript type definitions
-├── App.tsx          # Main application component
-├── QuizContainer.tsx # Core quiz functionality
-├── components/      # Reusable UI components
-└── screens/         # Main application screens
+├── api/                 # API-Integration
+│   ├── authService.ts   # Authentifizierung
+│   ├── quizService.ts   # Quiz-Funktionen
+│   ├── userService.ts   # Benutzer-Funktionen
+│   └── shopService.ts   # Shop-Funktionen
+├── components/          # UI-Komponenten
+├── hooks/              # Custom Hooks
+│   └── quiz/           # Quiz-spezifische Hooks
+├── store/              # Zustand Stores
+├── types/              # TypeScript-Definitionen
+└── lib/                # Hilfsfunktionen
 ```
 
-## Core Features
+## 🔑 Wichtige Dateien
+- `src/QuizContainer.tsx` - Hauptkomponente
+- `src/store/useQuizStore.ts` - Quiz-Zustand
+- `src/hooks/quiz/useQuizData.ts` - Datenabfragen
+- `src/api/quizService.ts` - Quiz-API
 
-### 1. Quiz System
-- Multiple question types:
-  - Multiple Choice
-  - True/False
-  - Open Questions
-  - Drag & Drop
-  - Case Studies
-  - Fill-in-the-blank
-- Progressive difficulty levels
-- Joker system for assistance
-- Immediate feedback and explanations
+## 💾 Datenbankstruktur (Supabase)
+### Wichtige Tabellen
+- `questions` - Quiz-Fragen
+- `user_stats` - Benutzerstatistiken
+- `profiles` - Benutzerprofile
+- `answered_questions` - Beantwortete Fragen
+- `quiz_completions` - Quiz-Abschlüsse
 
-### 2. User Progression
-- Experience points (XP) system
-- Level progression
-- Achievement system
-- Medal rewards
-- Skill tree development
+## 🔄 Datenfluss
+1. Fragen werden aus Supabase geladen
+2. Antworten werden validiert
+3. XP und Medaillen werden berechnet
+4. Statistiken werden aktualisiert
+5. Fortschritt wird gespeichert
 
-### 3. Social Features
-- Leaderboards:
-  - Player rankings
-  - University rankings
-  - League system
-- Profile customization
-- Achievement sharing
+## 🎮 Quiz-Logik
+### Fragetypen
+- Multiple Choice
+- True/False
+- Drag & Drop
+- Freitext
 
-### 4. Shop System
-- Avatar customization
-- Profile enhancements
-- Premium features
-- Virtual currency system
+### Belohnungssystem
+- XP für richtige Antworten
+- Medaillen (Gold, Silber, Bronze)
+- Streak-Bonus
+- Level-System
 
-## Database Structure
+## 📱 Responsive Design
+- Mobile-first Ansatz
+- Anpassungsfähige Layouts
+- Touch-freundliche Interaktionen
+- Optimierte Performance
 
-### Main Tables
-- `users`: User profiles and authentication
-- `questions`: Quiz questions and answers
-- `user_stats`: User progress and achievements
-- `quiz_events`: Quiz session tracking
-- `leaderboard`: Rankings and scores
-- `shop_items`: Available items in the shop
-- `user_inventory`: User-owned items
+## 🔒 Sicherheit
+- Supabase Auth
+- Geschützte Routen
+- Datenvalidierung
+- Rate Limiting
 
-## Key Components
+## 🚀 Getting Started
+1. Repository klonen
+2. Abhängigkeiten installieren: `npm install`
+3. Umgebungsvariablen konfigurieren
+4. Entwicklungsserver starten: `npm run dev`
 
-### QuizContainer
-- Manages quiz flow and state
-- Handles question transitions
-- Processes user answers
-- Manages rewards and progression
-
-### Question Components
-- MultipleChoiceQuestion
-- TrueFalseQuestion
-- OpenQuestion
-- DragDropQuestion
-- CasesQuestion
-- LueckentextQuestion
-
-### UI Components
-- QuizHeadline
-- JokerPanel
-- ProgressBar
-- QuestionNavigation
-- RewardAnimation
-
-## State Management
-- QuizContext: Global quiz state
-- Custom hooks for specific features:
-  - useUserStats
-  - useQuizAwards
-  - useQuestions
-  - useJokerLogic
-
-## API Integration
-- Supabase client setup
-- Real-time updates
-- Authentication
-- Data persistence
-
-## Mobile Responsiveness
-- Responsive design for all screen sizes
-- Touch-friendly interactions
-- Optimized layout for mobile devices
-- Adaptive UI components
-
-## Development Guidelines
-
-### Code Style
-- TypeScript for type safety
-- Functional components with hooks
-- Consistent naming conventions
-- Component-based architecture
-
-### Performance Considerations
-- Lazy loading of components
-- Optimized asset loading
-- Efficient state updates
-- Caching strategies
-
-### Testing
-- Component testing
-- State management testing
-- API integration testing
-- User interaction testing
-
-## Getting Started
-
-### Prerequisites
-- Node.js (v14 or higher)
-- npm or yarn
-- Supabase account
-
-### Installation
-1. Clone the repository
-2. Install dependencies: `npm install`
-3. Set up environment variables
-4. Start development server: `npm run dev`
-
-### Environment Variables
-```
+## ⚙️ Konfiguration
+### Umgebungsvariablen
+```env
 VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_SUPABASE_ANON_KEY=your_supabase_key
 ```
 
-## Deployment
-- Build: `npm run build`
-- Preview: `npm run preview`
-- Deploy to hosting service
+## 📦 Build & Deployment
+1. Build erstellen: `npm run build`
+2. Statische Dateien in Wix hochladen
+3. iFrame/HTML in Wix einbinden
 
-## Future Enhancements
-- Mobile app version
-- Additional question types
-- Enhanced social features
-- Advanced analytics
-- Performance optimizations
+## 🔍 Testing
+- Unit Tests: `npm test`
+- Integration Tests: `npm run test:integration`
+- E2E Tests: `npm run test:e2e`
 
-## Contributing
-1. Fork the repository
-2. Create feature branch
-3. Commit changes
-4. Push to branch
-5. Create Pull Request
+## 📝 Dokumentation
+- [API-Dokumentation](docs/api.md)
+- [Datenbank-Schema](docs/database.md)
+- [Komponenten-Übersicht](docs/components.md)
+- [State Management](docs/state.md)
 
-## License
-Proprietary - All rights reserved
+## 🤝 Contributing
+1. Fork erstellen
+2. Feature-Branch erstellen
+3. Änderungen committen
+4. Pull Request erstellen
+
+## 📄 Lizenz
+Proprietär - Alle Rechte vorbehalten
+
+## 📞 Support
+Bei Fragen oder Problemen:
+- E-Mail: support@riekerrep.de
+- GitHub Issues

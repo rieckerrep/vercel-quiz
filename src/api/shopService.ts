@@ -1,6 +1,6 @@
-import { supabase } from '../supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 import { apiCall, ApiResponse } from './apiClient';
-import { Database } from '../types/supabase';
+import { Database } from '../lib/supabase';
 
 type ShopAvatar = Database['public']['Tables']['shop_avatars']['Row'];
 type UserAvatar = Database['public']['Tables']['user_avatars']['Row'];
