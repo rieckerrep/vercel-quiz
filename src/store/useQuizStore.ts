@@ -799,7 +799,12 @@ export const useQuizStore = create<QuizState>((set, get) => {
         }
         
         // 2) answered_questions-Eintrag erstellen
-        const { error } = await quizService.answerQuestion(user.data.user.id, questionId, isCorrect);
+        const { error } = await quizService.answerQuestion(
+          user.data.user.id, 
+          questionId, 
+          isCorrect,
+          get().chapterId || 0
+        );
         
         if (error) {
           console.error("Error awarding question:", error);

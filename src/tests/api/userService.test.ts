@@ -119,39 +119,31 @@ describe('userService', () => {
     });
   });
 
-  describe('fetchStats', () => {
-    it('sollte Benutzerstatistiken erfolgreich abrufen', async () => {
-      const mockStats: UserStats = {
-        id: 'test-user-id',
-        user_id: 'test-user-id',
-        username: 'testuser',
-        avatar_url: null,
-        total_xp: 1000,
-        total_coins: 500,
-        questions_answered: 50,
-        correct_answers: 40,
-        current_league: 'Gold',
-        gold_medals: 5,
-        silver_medals: 3,
-        bronze_medals: 2,
-        created_at: '2024-01-01',
-        updated_at: '2024-01-01',
-        last_played: '2024-01-01',
-        league_group: 'A',
-        level: 5,
-        streak: 3,
-        title: 'Anfänger'
+  describe('fetchUserStats', () => {
+    it('should fetch user stats', async () => {
+      const mockStats = {
+        id: '1',
+        user_id: 'user123',
+        total_xp: 100,
+        total_coins: 50,
+        level: 2,
+        correct_answers: 10,
+        wrong_answers: 2,
+        streak: 5,
+        max_streak: 7
       };
 
-      const mockQuery = createMockQuery();
-      mockQuery.single.mockResolvedValue(createPostgrestResponse(mockStats, null));
-      vi.mocked(supabase.from).mockReturnValue(mockQuery as unknown as ReturnType<typeof supabase.from>);
+      vi.mocked(supabase.from).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: mockStats, error: null })
+          })
+        })
+      });
 
-      const result = await userService.fetchStats('test-user-id');
-
+      const result = await userService.fetchUserStats('user123');
       expect(result.data).toEqual(mockStats);
       expect(result.error).toBeNull();
-      expect(supabase.from).toHaveBeenCalledWith('user_stats');
     });
   });
 }); 

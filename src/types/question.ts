@@ -1,7 +1,46 @@
 import { Database } from './supabase';
-import { FormattedQuestion } from './supabase';
 
-export type Question = FormattedQuestion;
+export type Question = Database['public']['Tables']['questions']['Row'];
+export type Subquestion = Database['public']['Tables']['cases_subquestions']['Row'];
+
+export interface FormattedQuestion {
+  id: number;
+  type: string;
+  question_text: string;
+  correct_answer: string;
+  explanation: string | null;
+  chapter_id?: number;
+  sub_questions?: Array<{
+    id: number;
+    statement_text: string;
+    correct_answer: string;
+    explanation: string | null;
+  }>;
+}
+
+export interface QuestionOption {
+  id: string;
+  text: string;
+  isCorrect: boolean;
+}
+
+export type QuestionType = 'multiple_choice' | 'true_false' | 'drag_drop' | 'case_study';
+
+export interface AnsweredQuestion {
+  id: number;
+  user_id: string;
+  question_id: number;
+  is_correct: boolean;
+  answered_at: string;
+}
+
+export interface AnsweredSubQuestion {
+  id: number;
+  user_id: string;
+  sub_question_id: number;
+  is_correct: boolean;
+  answered_at: string;
+}
 
 export interface QuestionResponse {
   question_text: string;
@@ -19,8 +58,6 @@ export interface QuestionResponse {
   course_id?: number | null;
   subquestions_count?: number | null;
 }
-
-export type QuestionType = 'multiple_choice' | 'open_question' | 'fill_in_blank' | 'case';
 
 export interface QuestionState {
   isAnswerSubmitted: boolean;

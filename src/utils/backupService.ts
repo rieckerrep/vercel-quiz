@@ -1,62 +1,95 @@
-import { supabase } from '../api/supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 import { Database } from '../types/supabase';
 
-type TableName = keyof Database['public']['Tables'];
+type TableName = 'questions' | 'cases_subquestions' | 'chapters' | 'courses';
 
-interface BackupConfig {
-  tables: TableName[];
-  includeData: boolean;
-}
+type BackupData = {
+  questions: Database['public']['Tables']['questions']['Row'][];
+  subquestions: Database['public']['Tables']['cases_subquestions']['Row'][];
+  chapters: Database['public']['Tables']['chapters']['Row'][];
+  courses: Database['public']['Tables']['courses']['Row'][];
+};
 
-export class BackupService {
+class BackupService {
+  private static instance: BackupService;
+  private backupData: BackupData | null = null;
+
+  private constructor() {}
+
+  public static getInstance(): BackupService {
+    if (!BackupService.instance) {
+      BackupService.instance = new BackupService();
+    }
+    return BackupService.instance;
+  }
+
   private static async backupTable(table: TableName): Promise<any> {
     const { data, error } = await supabase
       .from(table)
       .select('*');
 
-    if (error) throw error;
+    if (error) {
+      console.error(`Fehler beim Backup von Tabelle ${table}:`, error);
+      return null;
+    }
+
     return data;
   }
 
-  private static async restoreTable(table: TableName, data: any[]): Promise<void> {
-    // Überprüfen ob Tabelle existiert
-    const { error: checkError } = await supabase
-      .from(table)
-      .select('id')
-      .limit(1);
-
-    if (checkError) {
-      throw new Error(`Tabelle ${table} existiert nicht`);
-    }
-
-    // Daten wiederherstellen
+  private static async restoreTable(table: TableName, data: any[]): Promise<boolean> {
     const { error } = await supabase
       .from(table)
       .upsert(data);
 
-    if (error) throw error;
-  }
-
-  static async createBackup(config: BackupConfig): Promise<Record<TableName, any[]>> {
-    const backup: Record<TableName, any[]> = {} as Record<TableName, any[]>;
-
-    for (const table of config.tables) {
-      backup[table] = await this.backupTable(table);
+    if (error) {
+      console.error(`Fehler beim Wiederherstellen von Tabelle ${table}:`, error);
+      return false;
     }
 
-    return backup;
+    return true;
   }
 
-  static async restoreBackup(backup: Record<TableName, any[]>): Promise<void> {
-    for (const [table, data] of Object.entries(backup)) {
-      await this.restoreTable(table as TableName, data);
+  public async createBackup(): Promise<BackupData | null> {
+    try {
+      const questions = await BackupService.backupTable('questions');
+      const subquestions = await BackupService.backupTable('cases_subquestions');
+      const chapters = await BackupService.backupTable('chapters');
+      const courses = await BackupService.backupTable('courses');
+
+      this.backupData = {
+        questions,
+        subquestions,
+        chapters,
+        courses
+      };
+
+      return this.backupData;
+    } catch (error) {
+      console.error('Fehler beim Erstellen des Backups:', error);
+      return null;
     }
+  }
+
+  public async restoreBackup(backupData: BackupData): Promise<boolean> {
+    try {
+      const results = await Promise.all([
+        BackupService.restoreTable('questions', backupData.questions),
+        BackupService.restoreTable('cases_subquestions', backupData.subquestions),
+        BackupService.restoreTable('chapters', backupData.chapters),
+        BackupService.restoreTable('courses', backupData.courses)
+      ]);
+
+      return results.every(result => result);
+    } catch (error) {
+      console.error('Fehler beim Wiederherstellen des Backups:', error);
+      return false;
+    }
+  }
+
+  public getBackupData(): BackupData | null {
+    return this.backupData;
   }
 }
 
 // Beispiel für die Verwendung:
-export const backupService = BackupService.getInstance({
-  tables: ['user_stats', 'answered_questions', 'quiz_progress'] as TableName[],
-  interval: 60, // 1 Stunde
-  maxBackups: 24 // 24 Backups behalten
-}); 
+export const backupService = BackupService.getInstance(); 
