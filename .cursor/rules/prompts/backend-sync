@@ -1,0 +1,123 @@
+# ✅ Backend-Sync Plan für XP, Fortschritt & Belohnungen (Supabase)
+
+## 🎯 Ziel
+
+Die bisher lokal im Frontend berechneten Spiel- und Fortschrittsdaten (XP, Coins, Medaillen, Jokerverbrauch, Quizfortschritt) sollen serverseitig über Supabase verarbeitet, gespeichert und validiert werden. Das schützt gegen Manipulation, sichert die Daten langfristig und ermöglicht ein skalierbares Level- und Rankingsystem.
+
+---
+
+## 🧩 1. XP-Vergabe (ersetzt: addXP aus Frontend)
+
+### ✅ Umsetzung:
+- Supabase-Funktion: `calculate_and_award_xp(p_user_id UUID, p_correct_answers INTEGER, p_question_ids UUID[])`
+- Vergibt XP nur für **neue, korrekt beantwortete Fragen**
+- Fragetypen werden berücksichtigt:
+  - `"case-main"` = 0 XP
+  - `"case-subquestion"` & `"normal"` = 10 XP
+
+### ✅ Aufgaben:
+- Frontend ruft nicht `addXP()`, sondern `supabase.rpc("calculate_and_award_xp", {...})`
+- XP werden zentral in `profiles` oder `user_stats` gespeichert
+- Optional: XP-Log-Tabelle für Historie
+
+---
+
+## 🥇 2. Medaillen-Vergabe
+
+### ✅ Umsetzung:
+- Tabelle: `unlocked_medals (user_id, medal_id, unlocked_at)`
+- Frontend ruft `unlockMedal()` **nur** bei tatsächlichem Event
+- Backend prüft: existiert bereits? → wenn ja, keine erneute Vergabe
+
+### ✅ Aufgaben:
+- Mutation `unlockMedal` aufrufen (idealerweise mit Medaillen-Regellogik im Backend)
+- Supabase-Check: existiert `(user_id, medal_id)`?
+
+---
+
+## 🧾 3. Fortschritt speichern
+
+### ✅ Umsetzung:
+- Tabelle: `chapter_progress (user_id, chapter_id, correct_count, total_count)`
+- Fortschritt wird nach jeder Antwort per Mutation aktualisiert
+
+### ✅ Aufgaben:
+- Mutation `trackProgress(chapterId, correctCount)` o. ä.
+- optional: Backend berechnet Fortschritt über `answered_questions`
+
+---
+
+## 🃏 4. Jokerverbrauch speichern
+
+### ✅ Umsetzung:
+- Tabelle: `joker_usage (user_id, joker_type, quiz_id, used_at)`
+- Beim Einsatz eines Jokers: Mutation `useJoker(type)`
+
+### ✅ Aufgaben:
+- Frontend-Trigger bei Joker-Verbrauch
+- Supabase speichert Eintrag – ggf. `unique(user_id, quiz_id, joker_type)`
+
+---
+
+## 🧠 5. Antwort-Logik zentralisieren
+
+### ✅ Umsetzung:
+- Mutation: `submitAnswer(question_id, is_correct)`
+- Backend prüft:
+  - ob bereits beantwortet (→ keine XP-Vergabe)
+  - Fragetyp (→ wie viel XP)
+  - speichert in `answered_questions`
+
+### ✅ Aufgaben:
+- Bestehende lokale `submitAnswer` durch sichere Supabase-Mutation ersetzen
+- XP + Fortschritt + Antwortspeicherung in einer zentralen RPC oder Mutation bündeln
+
+---
+
+## 📊 6. Quiz-Sessions (optional)
+
+### ✅ Umsetzung:
+- Tabelle: `quiz_sessions (user_id, chapter_id, xp_earned, correct, time_spent, used_jokers)`
+- Wird am Quiz-Ende gespeichert
+
+### ✅ Aufgaben:
+- `completeQuizSession()` am Endscreen aufrufen
+- Daten aus Zustand aggregieren, dann zentral speichern
+
+---
+
+## 🔐 Sicherheit & Fairness
+
+- Row Level Security (RLS) aktivieren für alle Tabellen
+- Nur authentifizierte Nutzer dürfen auf eigene Zeilen schreiben
+- Optional: XP-Vergabe nur über `rpc()` zulassen, keine direkte Bearbeitung von `user_stats`
+
+---
+
+## ✅ Zusammenfassung: Was ersetzt wird
+
+| Bisher im Frontend               | Zukünftig im Backend (Supabase)       |
+|----------------------------------|----------------------------------------|
+| `addXP(10)`                      | `calculate_and_award_xp(...)` RPC     |
+| XP in Zustand erhöhen            | XP in `profiles`/`user_stats` speichern |
+| Medaillen lokal vergeben         | `unlocked_medals` + Check             |
+| Joker lokal speichern            | `joker_usage`                         |
+| Fortschritt in Zustand zählen    | `chapter_progress`                    |
+| Antworten nur lokal gespeichert  | `answered_questions` mit Doppel-Prüfung |
+
+---
+
+## 📦 Frontend-Nutzung
+
+- Alle Mutationen über `useMutation()` mit Supabase `rpc()` oder `insert()`-Logik
+- `queryKeys.ts` für neue Query: `userStats`, `unlockedMedals`, `chapterProgress`
+- `useQuizData.ts` → zentralisieren
+
+---
+
+## 📌 Optional später
+
+- XP-Historie-Tabelle (`xp_events`)
+- Fortschritts-Vergleich: Quiz vs. Kapitel vs. Gesamt
+- Joker-Limits pro Tag
+- Ranking-Snapshots (Tages/Wochen-Top-10)

@@ -7,6 +7,16 @@ export type Answer = Database['public']['Tables']['answered_questions']['Row'];
 export type UserSubQuestionAnswer = Database['public']['Tables']['answered_cases_subquestions']['Row'];
 export type UserStats = Database['public']['Tables']['user_stats']['Row'];
 
+// FormattedQuestion Typ basierend auf der Datenbank
+export type FormattedQuestion = Question & {
+  answers: {
+    A: string | null;
+    B: string | null;
+    C: string | null;
+    D: string | null;
+  };
+};
+
 // Gemeinsame Quiz-Typen
 export type QuizAnswer = Answer;
 
@@ -90,53 +100,25 @@ export interface QuizQuestion {
   timeLimit?: number;
 }
 
+export type UserAnswer = {
+  questionId: number;
+  answerId: string;
+  isCorrect: boolean;
+  timestamp: string;
+};
+
 export interface QuizState {
-  currentQuestion: QuizQuestion | null;
-  selectedAnswer: string | string[] | Record<string, string[]>;
-  availableJokers: {
-    fiftyFifty: number;
-    timeBonus: number;
-    skipQuestion: number;
-  };
-  useJoker: (type: 'fiftyFifty' | 'timeBonus' | 'skipQuestion') => void;
-  score: number;
-  progress: number;
-  isComplete: boolean;
-  setCurrentQuestion: (question: QuizQuestion) => void;
-  setSelectedAnswer: (answer: string | string[] | Record<string, string[]>) => void;
-  calculateScore: () => number;
-  resetQuiz: () => void;
+  currentQuestion: FormattedQuestion | null;
+  userAnswers: UserAnswer[];
+  isLoading: boolean;
+  error: string | null;
 }
 
 export interface QuizContextType {
-  // Lade-Status
-  isQuestionsLoading: boolean;
-  isAnsweredQuestionsLoading: boolean;
-  
-  // Fragen und Antworten
-  questions: Question[];
-  subQuestions: SubQuestion[];
-  answeredQuestions: Answer[];
-  answeredSubQuestions: UserSubQuestionAnswer[];
-  
-  // Mutations
-  saveAnswer: (answer: Omit<Answer, 'id' | 'answered_at'>) => Promise<Answer>;
-  
-  // Fehler
-  questionsError: Error | null;
-  answeredQuestionsError: Error | null;
-
-  // Hilfsfunktionen
-  isQuestionAnswered: (questionId: number) => boolean;
+  state: QuizState;
+  submitAnswer: (questionId: number, answerId: string) => Promise<void>;
+  loadQuestion: (chapterId: number) => Promise<void>;
 }
-
-export type AnsweredSubQuestion = {
-  id: number;
-  sub_question_id: number;
-  user_id: string;
-  is_correct: boolean;
-  answered_at: string;
-};
 
 export interface LevelData {
   id: number;

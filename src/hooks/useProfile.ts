@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Profile } from '../lib/supabase';
+import { Database } from '../types/supabase';
+
+type Profile = Database['public']['Tables']['profiles']['Row'];
 
 export const useProfile = () => {
   const [data, setData] = useState<Profile | null>(null);
