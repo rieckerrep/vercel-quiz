@@ -2,15 +2,7 @@
   "buildCommand": "vite build",
   "installCommand": "npm install",
   "framework": "vite",
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    }
-  ],
+  "outputDirectory": "dist",
   "env": {
     "NODE_ENV": "production"
   }
