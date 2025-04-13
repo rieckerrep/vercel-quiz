@@ -19,15 +19,28 @@ export const useProfileQuery = (userId: string) => {
   return useQuery({
     queryKey: queryKeys.profile(userId),
     queryFn: async () => {
+      if (!userId) {
+        throw new Error('Keine gültige Benutzer-ID');
+      }
+
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
       
-      if (error) throw error;
+      if (error) {
+        console.error('Fehler beim Abrufen des Profils:', error);
+        throw error;
+      }
+
+      if (!data) {
+        throw new Error('Profil nicht gefunden');
+      }
+
       return data;
     },
+    enabled: !!userId, // Nur ausführen, wenn userId vorhanden ist
     staleTime: 5 * 60 * 1000, // 5 Minuten
     gcTime: 30 * 60 * 1000    // 30 Minuten
   });
@@ -39,15 +52,48 @@ export const useUserStatsQuery = (userId: string) => {
   return useQuery({
     queryKey: queryKeys.stats(userId),
     queryFn: async () => {
+      if (!userId) {
+        throw new Error('Keine gültige Benutzer-ID');
+      }
+
       const { data, error } = await supabase
         .from('user_stats')
         .select('*')
         .eq('user_id', userId)
         .single();
       
-      if (error) throw error;
+      if (error) {
+        console.error('Fehler beim Abrufen der Statistiken:', error);
+        throw error;
+      }
+
+      if (!data) {
+        // Erstelle neue Statistiken, falls keine existieren
+        const { data: newStats, error: createError } = await supabase
+          .from('user_stats')
+          .insert({
+            user_id: userId,
+            total_xp: 0,
+            level: 1,
+            streak: 0,
+            questions_answered: 0,
+            correct_answers: 0,
+            total_coins: 0
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Fehler beim Erstellen der Statistiken:', createError);
+          throw createError;
+        }
+
+        return newStats;
+      }
+
       return data;
     },
+    enabled: !!userId, // Nur ausführen, wenn userId vorhanden ist
     staleTime: 1 * 60 * 1000,  // 1 Minute
     gcTime: 5 * 60 * 1000      // 5 Minuten
   });
@@ -58,15 +104,25 @@ export const useUpdateUserStatsMutation = (userId: string) => {
   
   return useMutation({
     mutationFn: async (stats: Partial<UserStats>) => {
+      if (!userId) {
+        throw new Error('Keine gültige Benutzer-ID');
+      }
+
       const { error } = await supabase
         .from('user_stats')
         .update(stats)
         .eq('user_id', userId);
       
-      if (error) throw error;
+      if (error) {
+        console.error('Fehler beim Aktualisieren der Statistiken:', error);
+        throw error;
+      }
+
       return stats;
     },
     onMutate: async (newStats) => {
+      if (!userId) return;
+
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: queryKeys.stats(userId) });
       
@@ -82,12 +138,14 @@ export const useUpdateUserStatsMutation = (userId: string) => {
       return { previousStats };
     },
     onError: (err, newStats, context) => {
+      console.error('Fehler bei der Mutation:', err);
       // Bei Fehler zurücksetzen
       if (context?.previousStats) {
         queryClient.setQueryData(queryKeys.stats(userId), context.previousStats);
       }
     },
     onSettled: () => {
+      if (!userId) return;
       // Nach Erfolg oder Fehler neu validieren
       queryClient.invalidateQueries({ queryKey: queryKeys.stats(userId) });
     }

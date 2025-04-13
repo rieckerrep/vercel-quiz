@@ -2,10 +2,11 @@ import { supabase } from '../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
 
 // Typen für API-Antworten
-export interface ApiResponse<T> {
-  data: T | null;
+export type ApiResponse<T> = {
+  success: boolean;
   error: Error | null;
-}
+  data: T | null;
+};
 
 // Typen für API-Fehler
 export interface ApiError extends Error {
@@ -43,59 +44,44 @@ export const handleApiError = (error: any): ApiError => {
  * Wrapper für API-Aufrufe mit automatischer Fehlerbehandlung und Token-Handling
  */
 export const apiCall = async <T>(
-  apiFunction: () => Promise<{ data: T | null; error: any }>,
-  options: {
-    requireAuth?: boolean;
-    retryOnRateLimit?: boolean;
-  } = {}
+  operation: () => Promise<{ data: T | null; error: Error | null }>,
+  options: { requireAuth?: boolean } = { requireAuth: true }
 ): Promise<ApiResponse<T>> => {
-  const { requireAuth = true, retryOnRateLimit = true } = options;
-  
-  // Prüfen, ob ein Benutzer angemeldet ist
-  if (requireAuth) {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      return {
-        data: null,
-        error: new Error('Nicht authentifiziert. Bitte melde dich an.') as ApiError
-      };
-    }
-  }
-  
-  let retries = 0;
-  
-  while (true) {
-    try {
-      const response = await apiFunction();
-      
-      if (response.error) {
-        // Rate-Limit-Fehler behandeln
-        if (response.error.code === '429' && retryOnRateLimit && retries < MAX_RETRIES) {
-          retries++;
-          console.log(`Rate-Limit erreicht. Warte ${RETRY_DELAY}ms vor Wiederholung (${retries}/${MAX_RETRIES})...`);
-          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-          continue;
-        }
-        
-        // Fehler zurückgeben
+  try {
+    // Nur Authentifizierung prüfen, wenn erforderlich
+    if (options.requireAuth) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
         return {
-          data: null,
-          error: handleApiError(response.error)
+          success: false,
+          error: new Error('Nicht authentifiziert. Bitte melde dich an.'),
+          data: null
         };
       }
-      
-      // Erfolgreiche Antwort zurückgeben
+    }
+
+    const response = await operation();
+    
+    if (response.error) {
       return {
-        data: response.data,
-        error: null
-      };
-    } catch (error) {
-      // Unerwartete Fehler behandeln
-      return {
-        data: null,
-        error: handleApiError(error)
+        success: false,
+        error: response.error,
+        data: null
       };
     }
+
+    return {
+      success: true,
+      error: null,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('API-Fehler:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error : new Error('Ein unbekannter Fehler ist aufgetreten'),
+      data: null
+    };
   }
 };
 

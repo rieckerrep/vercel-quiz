@@ -189,12 +189,23 @@ export const authService = {
     return apiCall<{ user: any; profile: User | null }>(
       async () => {
         try {
+          // Zuerst prüfen wir, ob eine Session existiert
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
           if (sessionError) {
-            notificationService.error(ERROR_MESSAGES.USER.SESSION_EXPIRED);
             console.error('Fehler beim Abrufen der Sitzung:', sessionError);
-            return { data: null, error: sessionError };
+            // Versuche die Session zu aktualisieren
+            const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+            
+            if (refreshError) {
+              notificationService.error(ERROR_MESSAGES.USER.SESSION_EXPIRED);
+              return { data: null, error: refreshError };
+            }
+            
+            if (!refreshedSession) {
+              notificationService.info(ERROR_MESSAGES.USER.NOT_LOGGED_IN);
+              return { data: null, error: new Error('Keine aktive Sitzung') };
+            }
           }
 
           if (!session) {
@@ -202,7 +213,7 @@ export const authService = {
             return { data: null, error: new Error('Keine aktive Sitzung') };
           }
 
-          // Benutzerprofil abrufen
+          // Benutzerprofil abrufen mit verbesserter Fehlerbehandlung
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
             .select('*')
@@ -210,15 +221,26 @@ export const authService = {
             .single();
 
           if (profileError) {
-            notificationService.error(ERROR_MESSAGES.USER.PROFILE_UPDATE);
             console.error('Fehler beim Abrufen des Profils:', profileError);
-            return { data: { user: session.user, profile: null }, error: null };
+            // Versuche das Profil erneut abzurufen
+            const { data: retryProfile, error: retryError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+
+            if (retryError) {
+              notificationService.error(ERROR_MESSAGES.USER.PROFILE_UPDATE);
+              return { data: { user: session.user, profile: null }, error: null };
+            }
+
+            return { data: { user: session.user, profile: retryProfile }, error: null };
           }
 
           return { data: { user: session.user, profile: profileData }, error: null };
         } catch (error) {
-          notificationService.error(ERROR_MESSAGES.GENERAL.UNKNOWN);
           console.error('Unerwarteter Fehler beim Abrufen der Sitzung:', error);
+          notificationService.error(ERROR_MESSAGES.GENERAL.UNKNOWN);
           return { data: null, error: error as Error };
         }
       },
@@ -316,14 +338,27 @@ export const authService = {
    * Universitäten abrufen
    */
   fetchUniversities: async (): Promise<ApiResponse<University[]>> => {
-    return apiCall(async () => {
-      const { data, error } = await supabase
-        .from('universities')
-        .select('*')
-        .order('name');
-      
-      return { data, error };
-    });
+    return apiCall<University[]>(
+      async () => {
+        try {
+          const { data, error } = await supabase
+            .from('universities')
+            .select('*')
+            .order('name');
+
+          if (error) {
+            console.error('Fehler beim Abrufen der Universitäten:', error);
+            return { data: null, error };
+          }
+
+          return { data, error: null };
+        } catch (error) {
+          console.error('Unerwarteter Fehler beim Abrufen der Universitäten:', error);
+          return { data: null, error: error as Error };
+        }
+      },
+      { requireAuth: false } // Keine Authentifizierung erforderlich
+    );
   }
 };
 

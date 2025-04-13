@@ -53,29 +53,84 @@ function AppContent() {
   const { fetchQuestions } = useQuizStore();
   const { playCorrectSound, playWrongSound } = useSoundStore();
 
-  // Auth initialisieren
+  // Auth initialisieren mit verbesserter Fehlerbehandlung
   React.useEffect(() => {
-    initAuth();
+    const initializeAuth = async () => {
+      try {
+        await initAuth();
+      } catch (error) {
+        console.error('Fehler bei der Auth-Initialisierung:', error);
+        // Optional: Hier könntest du eine Benachrichtigung anzeigen
+      }
+    };
+
+    initializeAuth();
   }, [initAuth]);
 
-  // User-Daten laden wenn sich der User ändert
+  // User-Daten laden mit verbesserter Fehlerbehandlung
   React.useEffect(() => {
-    if (user?.id) {
-      loadUserData();
-    }
+    const loadData = async () => {
+      if (user?.id) {
+        try {
+          await loadUserData();
+        } catch (error) {
+          console.error('Fehler beim Laden der Benutzerdaten:', error);
+          // Optional: Hier könntest du eine Benachrichtigung anzeigen
+        }
+      }
+    };
+
+    loadData();
   }, [user?.id, loadUserData]);
 
-  // Ladezustand oder Fehler anzeigen
+  // Ladezustand oder Fehler anzeigen mit verbesserter Benutzerführung
   if (authLoading || userLoading) {
-    return <LoadingScreen />;
+    return (
+      <div className="min-h-screen flex items-center justify-center text-lg">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mb-4"></div>
+          <p>Lade...</p>
+        </div>
+      </div>
+    );
   }
 
   if (authError) {
-    return <ErrorScreen message={authError} />;
+    return (
+      <div className="min-h-screen flex items-center justify-center text-lg text-red-500">
+        <div className="flex flex-col items-center">
+          <svg className="w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p>Fehler bei der Authentifizierung: {typeof authError === 'string' ? authError : authError.message}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+          >
+            Neu laden
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (userError) {
-    return <ErrorScreen message={userError} />;
+    return (
+      <div className="min-h-screen flex items-center justify-center text-lg text-red-500">
+        <div className="flex flex-col items-center">
+          <svg className="w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p>Fehler beim Laden der Benutzerdaten: {typeof userError === 'string' ? userError : userError.message}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+          >
+            Neu laden
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Zeige Login-Screen wenn kein User vorhanden ist

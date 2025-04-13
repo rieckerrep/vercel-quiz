@@ -18,15 +18,59 @@ export const useUserStats = (userId?: string) => {
       }
 
       try {
-        const { data: stats, error } = await supabase
+        // Überprüfe zuerst die Session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          throw new Error('Session-Fehler: ' + sessionError.message);
+        }
+
+        if (!session) {
+          throw new Error('Keine aktive Session');
+        }
+
+        // Führe die Abfrage nur aus, wenn eine gültige Session existiert
+        const { data: stats, error: queryError } = await supabase
           .from('user_stats')
           .select('*')
           .eq('user_id', userId)
           .single();
 
-        if (error) throw error;
-        setData(stats);
+        if (queryError) {
+          console.error('Datenbankfehler:', queryError);
+          throw new Error('Fehler beim Abrufen der Benutzerstatistiken');
+        }
+
+        if (!stats) {
+          // Erstelle neue Statistiken, falls keine existieren
+          const { data: newStats, error: insertError } = await supabase
+            .from('user_stats')
+            .insert([
+              {
+                user_id: userId,
+                total_xp: 0,
+                total_coins: 0,
+                level: 1,
+                questions_answered: 0,
+                correct_answers: 0,
+                streak: 0,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              }
+            ])
+            .select()
+            .single();
+
+          if (insertError) {
+            throw new Error('Fehler beim Erstellen der Benutzerstatistiken');
+          }
+
+          setData(newStats);
+        } else {
+          setData(stats);
+        }
       } catch (err) {
+        console.error('Fehler in useUserStats:', err);
         setError(err as Error);
       } finally {
         setLoading(false);
@@ -40,16 +84,31 @@ export const useUserStats = (userId?: string) => {
     if (!userId) return;
 
     try {
-      const { data: updatedStats, error } = await supabase
+      // Überprüfe die Session vor der Mutation
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        throw new Error('Session-Fehler: ' + sessionError.message);
+      }
+
+      if (!session) {
+        throw new Error('Keine aktive Session');
+      }
+
+      const { data: updatedStats, error: updateError } = await supabase
         .from('user_stats')
         .update(newData)
         .eq('user_id', userId)
         .select()
         .single();
 
-      if (error) throw error;
+      if (updateError) {
+        throw new Error('Fehler beim Aktualisieren der Statistiken');
+      }
+
       setData(updatedStats);
     } catch (err) {
+      console.error('Fehler beim Mutieren der Statistiken:', err);
       setError(err as Error);
     }
   };

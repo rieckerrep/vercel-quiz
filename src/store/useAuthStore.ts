@@ -20,21 +20,47 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       set({ isLoading: true, error: null });
       
-      // Initial auth check
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      // Initial auth check mit verbesserter Fehlerbehandlung
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      if (userError) {
-        console.error('Auth error:', userError);
-        set({ error: userError.message, isLoading: false });
-        return;
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+        // Versuche die Session zu aktualisieren
+        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError) {
+          console.error('Refresh error:', refreshError);
+          set({ error: refreshError.message, isLoading: false });
+          return;
+        }
+        
+        if (!refreshedSession) {
+          set({ user: null, isLoading: false });
+          return;
+        }
+        
+        set({ user: refreshedSession.user, isLoading: false });
+      } else if (session) {
+        set({ user: session.user, isLoading: false });
+      } else {
+        set({ user: null, isLoading: false });
       }
 
-      set({ user, isLoading: false });
-
-      // Auth state listener
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // Auth state listener mit verbesserter Fehlerbehandlung
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         console.log('Auth state changed:', event, session?.user);
-        set({ user: session?.user ?? null, isLoading: false });
+        
+        if (event === 'SIGNED_OUT') {
+          set({ user: null, isLoading: false });
+        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          if (session?.user) {
+            set({ user: session.user, isLoading: false });
+          }
+        } else if (event === 'USER_UPDATED') {
+          if (session?.user) {
+            set({ user: session.user, isLoading: false });
+          }
+        }
       });
 
       return () => {
