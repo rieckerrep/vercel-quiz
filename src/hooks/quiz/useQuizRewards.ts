@@ -98,8 +98,22 @@ export const useQuizRewards = create<QuizRewards>((set) => ({
     try {
       let total = 0;
       
+      // Hole bereits beantwortete Fragen
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return 0;
+
+      const { data: answeredQuestions } = await supabase
+        .from('answered_questions')
+        .select('question_id')
+        .eq('user_id', session.user.id);
+
+      const answeredQuestionIds = answeredQuestions?.map(q => q.question_id) || [];
+      
       // Berechne für jede Frage die möglichen XP
       for (const q of questions) {
+        // Überspringe bereits beantwortete Fragen
+        if (answeredQuestionIds.includes(q.id)) continue;
+
         if (q.type === "cases") {
           const { data: subs, error } = await supabase
             .from("cases_subquestions")
@@ -122,7 +136,7 @@ export const useQuizRewards = create<QuizRewards>((set) => ({
     } catch (error) {
       console.error("Fehler bei der Berechnung der möglichen XP:", error);
       set({ isCalculatingXp: false });
-      return totalQuestions * 10; // Fallback auf Basis-XP
+      return 0; // Fallback auf 0 XP
     }
   },
 
