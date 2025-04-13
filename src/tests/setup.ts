@@ -1,6 +1,5 @@
 import { vi, beforeEach } from 'vitest';
 import type { PostgrestError, PostgrestSingleResponse } from '@supabase/supabase-js';
-import type { Database } from '../types/supabase';
 
 // Mock für Supabase
 vi.mock('../supabaseClient', () => ({
@@ -28,10 +27,12 @@ vi.mock('../supabaseClient', () => ({
 // Mock für NotificationService
 vi.mock('../services/notificationService', () => ({
   notificationService: {
-    error: vi.fn(),
-    success: vi.fn(),
-    info: vi.fn(),
-    warning: vi.fn()
+    showSuccess: vi.fn(),
+    showError: vi.fn(),
+    showInfo: vi.fn(),
+    showWarning: vi.fn(),
+    showErrorFromCode: vi.fn(),
+    showSuccessFromCode: vi.fn()
   }
 }));
 
@@ -103,7 +104,7 @@ export const createMockQuery = () => {
     filter: vi.fn().mockReturnThis(),
     match: vi.fn().mockReturnThis(),
   };
-  return mockQuery as any;
+  return mockQuery as unknown as ReturnType<typeof supabase.from>;
 };
 
 // Globale Testumgebung vorbereiten
@@ -120,8 +121,10 @@ beforeEach(() => {
   });
   
   // NotificationService-Mock-Implementierungen zurücksetzen
-  vi.mocked(notificationService.error).mockReset();
-  vi.mocked(notificationService.success).mockReset();
-  vi.mocked(notificationService.info).mockReset();
-  vi.mocked(notificationService.warning).mockReset();
+  vi.mocked(notificationService.showSuccess).mockReset();
+  vi.mocked(notificationService.showError).mockReset();
+  vi.mocked(notificationService.showInfo).mockReset();
+  vi.mocked(notificationService.showWarning).mockReset();
+  vi.mocked(notificationService.showErrorFromCode).mockReset();
+  vi.mocked(notificationService.showSuccessFromCode).mockReset();
 }); 

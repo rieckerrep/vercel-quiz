@@ -1,4 +1,0 @@
-nochmal präziser:
-Es sollen nur XP und Münzen und (...) Fragen richtig beantwortet berechnet werden, die auch in der "Runde" richtig beantwortet worden sind. Also wenn ich 10 normale Fragen beantworten kann und 6 richtig und 4 falsch beantwortet habe, werden 60 - 20 münzen berechnet (40 Münzen). wenn ich die Frage aber nochmal beantworte (sie also in answered_questions bzw. answered_subquestions eingetragen ist), dann sollen im EndScreen nicht erneut XP vergeben werden können. 
-
-Wenn ich nur eine Frage nicht beantwortet habe (also 9 beantwortet, 1 nicht beantwortet)

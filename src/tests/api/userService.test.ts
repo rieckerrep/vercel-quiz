@@ -119,7 +119,7 @@ describe('userService', () => {
     });
   });
 
-  describe('fetchUserStats', () => {
+  describe('fetchStats', () => {
     it('sollte Benutzerstatistiken erfolgreich abrufen', async () => {
       const mockStats: UserStats = {
         id: 'test-user-id',
@@ -147,7 +147,7 @@ describe('userService', () => {
       mockQuery.single.mockResolvedValue(createPostgrestResponse(mockStats, null));
       vi.mocked(supabase.from).mockReturnValue(mockQuery as unknown as ReturnType<typeof supabase.from>);
 
-      const result = await userService.fetchUserStats('test-user-id');
+      const result = await userService.fetchStats('test-user-id');
 
       expect(result.data).toEqual(mockStats);
       expect(result.error).toBeNull();

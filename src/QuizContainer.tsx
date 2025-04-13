@@ -314,7 +314,7 @@ export function QuizContainer({
       const { data: roundXp, error } = await supabase.rpc('calculate_and_award_xp', {
         p_user_id: session.user.id,
         p_correct_answers: correctAnswers,
-        p_question_ids: questions.map(q => q.id.toString())
+        p_question_ids: questions.map(q => q.id)
       });
 
       if (error) {

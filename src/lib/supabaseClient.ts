@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { Database } from "../types/supabase";
+import { Database } from "./supabase";
 
 // Überprüfe, ob die Umgebungsvariablen vorhanden sind
 if (!import.meta.env.VITE_SUPABASE_URL) {

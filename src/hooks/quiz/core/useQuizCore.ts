@@ -2,8 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { Question, Answer, SubQuestion, SubAnswer, AnsweredQuestion, AnsweredSubQuestion } from '../types';
 import { queryKeys } from '../queryKeys';
-import { useSupabaseTable } from '../../useSupabaseTable';
-import { Database } from '../../../types/supabase';
 
 // Core Quiz Data Hooks
 export const useQuestions = () => {
@@ -175,41 +173,5 @@ export const useQuizState = () => {
   return {
     saveAnswer,
     saveSubAnswer
-  };
-};
-
-export const useQuizCore = () => {
-  const { data: profile, isLoading: isProfileLoading } = useSupabaseTable<Database['public']['Tables']['profiles']['Row']>(
-    'profiles',
-    'id'
-  );
-
-  const { data: stats, isLoading: isStatsLoading } = useSupabaseTable<Database['public']['Tables']['user_stats']['Row']>(
-    'user_stats',
-    'user_id'
-  );
-
-  const { data: questions, isLoading: isQuestionsLoading } = useSupabaseTable<Database['public']['Tables']['questions']['Row']>(
-    'questions',
-    'chapter_id'
-  );
-
-  const { data: answeredQuestions, isLoading: isAnsweredQuestionsLoading } = useSupabaseTable<Database['public']['Tables']['answered_questions']['Row']>(
-    'answered_questions',
-    'user_id'
-  );
-
-  const { data: subAnswers, isLoading: isSubAnswersLoading } = useSupabaseTable<Database['public']['Tables']['sub_answers']['Row']>(
-    'sub_answers',
-    'user_id'
-  );
-
-  return {
-    profile,
-    stats,
-    questions,
-    answeredQuestions,
-    subAnswers,
-    isLoading: isProfileLoading || isStatsLoading || isQuestionsLoading || isAnsweredQuestionsLoading || isSubAnswersLoading
   };
 }; 

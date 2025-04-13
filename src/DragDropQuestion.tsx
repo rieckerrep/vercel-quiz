@@ -198,12 +198,7 @@ export default function DragDropQuestion({
       if (error) {
         console.error("Fehler beim Laden der DragDrop-Paare:", error);
       } else if (data) {
-        setPairs(data.map(pair => ({
-          id: pair.id,
-          group_id: pair.group_id,
-          drag_text: pair.drag_text || "",
-          correct_match: pair.correct_match || ""
-        })));
+        setPairs(data);
       }
       setLoading(false);
     }

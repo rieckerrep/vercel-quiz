@@ -7,6 +7,11 @@ import { notificationService } from '../services/notificationService';
 type User = Database['public']['Tables']['profiles']['Row'];
 type University = Database['public']['Tables']['universities']['Row'];
 
+type AuthResponse = {
+  user: any;
+  profile: User | null;
+};
+
 /**
  * Authentifizierungsdienst für Benutzeranmeldung, -registrierung und -verwaltung
  */
@@ -14,8 +19,8 @@ export const authService = {
   /**
    * Benutzer anmelden
    */
-  login: async (email: string, password: string): Promise<ApiResponse<{ user: any; profile: User | null }>> => {
-    return apiCall(
+  login: async (email: string, password: string): Promise<ApiResponse<AuthResponse>> => {
+    return apiCall<AuthResponse>(
       async () => {
         try {
           // Anmeldung mit Supabase
@@ -45,19 +50,15 @@ export const authService = {
           if (profileError) {
             notificationService.error(ERROR_MESSAGES.USER.PROFILE_UPDATE);
             console.error('Fehler beim Abrufen des Profils:', profileError);
-            // Wir geben trotzdem die Auth-Daten zurück, auch wenn das Profil nicht gefunden wurde
             return { data: { user: authData.user, profile: null }, error: null };
           }
 
-          notificationService.success('Anmeldung erfolgreich!');
           return { data: { user: authData.user, profile: profileData }, error: null };
         } catch (error) {
-          notificationService.error(ERROR_MESSAGES.GENERAL.UNKNOWN);
           console.error('Unerwarteter Fehler bei der Anmeldung:', error);
           return { data: null, error: error as Error };
         }
-      },
-      { requireAuth: false }
+      }
     );
   },
 
@@ -185,7 +186,7 @@ export const authService = {
    * Aktuelle Sitzung abrufen
    */
   getSession: async (): Promise<ApiResponse<{ user: any; profile: User | null }>> => {
-    return apiCall(
+    return apiCall<{ user: any; profile: User | null }>(
       async () => {
         try {
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
