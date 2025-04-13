@@ -9,77 +9,101 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      versions: {
+        Row: {
+          id: number
+          table_name: string
+          data: Json
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          table_name: string
+          data: Json
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          table_name?: string
+          data?: Json
+          created_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           id: string
-          username: string
+          username: string | null
           avatar_url: string | null
           level: number
           xp: number
           coins: number
           created_at: string
           updated_at: string
+          university: string | null
         }
         Insert: {
           id: string
-          username: string
+          username?: string | null
           avatar_url?: string | null
           level?: number
           xp?: number
           coins?: number
           created_at?: string
           updated_at?: string
+          university?: string | null
         }
         Update: {
           id?: string
-          username?: string
+          username?: string | null
           avatar_url?: string | null
           level?: number
           xp?: number
           coins?: number
           created_at?: string
           updated_at?: string
+          university?: string | null
         }
       }
       questions: {
         Row: {
           id: number
-          Frage: string
-          "Antwort A": string
-          "Antwort B": string
-          "Antwort C": string
-          "Antwort D": string
-          "Richtige Antwort": string
-          Begruendung: string
-          type: string
+          Frage: string | null
+          "Antwort A": string | null
+          "Antwort B": string | null
+          "Antwort C": string | null
+          "Antwort D": string | null
+          "Richtige Antwort": string | null
+          Begruendung: string | null
+          type: string | null
           chapter_id: number
           course_id: number | null
           subquestions_count: number | null
         }
         Insert: {
           id?: number
-          Frage: string
-          "Antwort A": string
-          "Antwort B": string
-          "Antwort C": string
-          "Antwort D": string
-          "Richtige Antwort": string
-          Begruendung: string
-          type: string
+          Frage?: string | null
+          "Antwort A"?: string | null
+          "Antwort B"?: string | null
+          "Antwort C"?: string | null
+          "Antwort D"?: string | null
+          "Richtige Antwort"?: string | null
+          Begruendung?: string | null
+          type?: string | null
           chapter_id: number
           course_id?: number | null
           subquestions_count?: number | null
         }
         Update: {
           id?: number
-          Frage?: string
-          "Antwort A"?: string
-          "Antwort B"?: string
-          "Antwort C"?: string
-          "Antwort D"?: string
-          "Richtige Antwort"?: string
-          Begruendung?: string
-          type?: string
+          Frage?: string | null
+          "Antwort A"?: string | null
+          "Antwort B"?: string | null
+          "Antwort C"?: string | null
+          "Antwort D"?: string | null
+          "Richtige Antwort"?: string | null
+          Begruendung?: string | null
+          type?: string | null
           chapter_id?: number
           course_id?: number | null
           subquestions_count?: number | null
@@ -89,30 +113,75 @@ export interface Database {
         Row: {
           id: string
           user_id: string
-          gold_medals: number
-          silver_medals: number
-          bronze_medals: number
-          created_at: string
-          updated_at: string
+          avatar_url: string | null
+          username: string | null
+          gold_medals: number | null
+          silver_medals: number | null
+          bronze_medals: number | null
+          total_xp: number | null
+          level: number | null
+          current_league: string | null
+          league_group: string | null
+          total_coins: number | null
+          questions_answered: number | null
+          correct_answers: number | null
+          streak: number | null
+          title: string | null
+          last_played: string | null
+          created_at: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: string
           user_id: string
-          gold_medals?: number
-          silver_medals?: number
-          bronze_medals?: number
-          created_at?: string
-          updated_at?: string
+          avatar_url?: string | null
+          username?: string | null
+          gold_medals?: number | null
+          silver_medals?: number | null
+          bronze_medals?: number | null
+          total_xp?: number | null
+          level?: number | null
+          current_league?: string | null
+          league_group?: string | null
+          total_coins?: number | null
+          questions_answered?: number | null
+          correct_answers?: number | null
+          streak?: number | null
+          title?: string | null
+          last_played?: string | null
+          created_at?: string | null
+          updated_at?: string | null
         }
         Update: {
           id?: string
           user_id?: string
-          gold_medals?: number
-          silver_medals?: number
-          bronze_medals?: number
-          created_at?: string
-          updated_at?: string
+          avatar_url?: string | null
+          username?: string | null
+          gold_medals?: number | null
+          silver_medals?: number | null
+          bronze_medals?: number | null
+          total_xp?: number | null
+          level?: number | null
+          current_league?: string | null
+          league_group?: string | null
+          total_coins?: number | null
+          questions_answered?: number | null
+          correct_answers?: number | null
+          streak?: number | null
+          title?: string | null
+          last_played?: string | null
+          created_at?: string | null
+          updated_at?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: "user_stats_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       answered_questions: {
         Row: {
@@ -137,6 +206,9 @@ export interface Database {
           created_at?: string
         }
       }
+    }
+    Views: {
+      [_ in never]: never
     }
     Functions: {
       get_league_leaderboard: {
@@ -199,6 +271,12 @@ export interface Database {
         Returns: number
       }
     }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
 }
 
@@ -207,19 +285,20 @@ export type TablesInsert<T extends keyof Database['public']['Tables']> = Databas
 export type TablesUpdate<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update']
 
 export type DatabaseQuestion = Tables<'questions'>
+export type Version = Tables<'versions'>
 
 export interface FormattedQuestion {
   id: number;
-  question_text: string;
+  question_text: string | null;
   answers: {
-    A: string;
-    B: string;
-    C: string;
-    D: string;
+    A: string | null;
+    B: string | null;
+    C: string | null;
+    D: string | null;
   };
-  correct_answer: string;
-  explanation: string;
-  type: string;
+  correct_answer: string | null;
+  explanation: string | null;
+  type: string | null;
   chapter_id: number;
   course_id: number | null;
   subquestions_count: number | null;

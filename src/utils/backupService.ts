@@ -1,25 +1,39 @@
-import { supabase } from '../api/supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 import { Database } from '../types/supabase';
 
-type TableName = keyof Database['public']['Tables'];
+type TableName = keyof Omit<Database['public']['Tables'], 'versions'>;
 
 interface BackupConfig {
   tables: TableName[];
-  includeData: boolean;
+  interval: number;
+  maxBackups: number;
 }
 
 export class BackupService {
-  private static async backupTable(table: TableName): Promise<any> {
+  private static instance: BackupService;
+  private config: BackupConfig;
+
+  private constructor(config: BackupConfig) {
+    this.config = config;
+  }
+
+  public static getInstance(config: BackupConfig): BackupService {
+    if (!BackupService.instance) {
+      BackupService.instance = new BackupService(config);
+    }
+    return BackupService.instance;
+  }
+
+  private async backupTable(table: TableName): Promise<any[]> {
     const { data, error } = await supabase
       .from(table)
       .select('*');
 
     if (error) throw error;
-    return data;
+    return data || [];
   }
 
-  private static async restoreTable(table: TableName, data: any[]): Promise<void> {
-    // Überprüfen ob Tabelle existiert
+  private async restoreTable(table: TableName, data: any[]): Promise<void> {
     const { error: checkError } = await supabase
       .from(table)
       .select('id')
@@ -29,7 +43,6 @@ export class BackupService {
       throw new Error(`Tabelle ${table} existiert nicht`);
     }
 
-    // Daten wiederherstellen
     const { error } = await supabase
       .from(table)
       .upsert(data);
@@ -37,17 +50,17 @@ export class BackupService {
     if (error) throw error;
   }
 
-  static async createBackup(config: BackupConfig): Promise<Record<TableName, any[]>> {
-    const backup: Record<TableName, any[]> = {} as Record<TableName, any[]>;
+  public async createBackup(): Promise<Record<TableName, any[]>> {
+    const backup: Partial<Record<TableName, any[]>> = {};
 
-    for (const table of config.tables) {
+    for (const table of this.config.tables) {
       backup[table] = await this.backupTable(table);
     }
 
-    return backup;
+    return backup as Record<TableName, any[]>;
   }
 
-  static async restoreBackup(backup: Record<TableName, any[]>): Promise<void> {
+  public async restoreBackup(backup: Record<TableName, any[]>): Promise<void> {
     for (const [table, data] of Object.entries(backup)) {
       await this.restoreTable(table as TableName, data);
     }

@@ -1,7 +1,8 @@
-import { supabase } from '../api/supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 import { Database } from '../types/supabase';
 
-type TableName = keyof Database['public']['Tables'];
+type TableName = keyof Omit<Database['public']['Tables'], 'versions'>;
+type VersionTable = Database['public']['Tables']['versions'];
 
 interface VersionConfig {
   tables: TableName[];
@@ -9,8 +10,22 @@ interface VersionConfig {
 }
 
 export class VersioningService {
-  private static async createVersion(table: TableName, data: any[]): Promise<void> {
-    const version = {
+  private static instance: VersioningService;
+  private config: VersionConfig;
+
+  private constructor(config: VersionConfig) {
+    this.config = config;
+  }
+
+  public static getInstance(config: VersionConfig): VersioningService {
+    if (!VersioningService.instance) {
+      VersioningService.instance = new VersioningService(config);
+    }
+    return VersioningService.instance;
+  }
+
+  private async createVersion(table: TableName, data: any[]): Promise<void> {
+    const version: VersionTable['Insert'] = {
       table_name: table,
       data: data,
       created_at: new Date().toISOString()
@@ -23,7 +38,7 @@ export class VersioningService {
     if (error) throw error;
   }
 
-  private static async getLatestVersion(table: TableName): Promise<any[] | null> {
+  private async getLatestVersion(table: TableName): Promise<any[] | null> {
     const { data, error } = await supabase
       .from('versions')
       .select('data')
@@ -36,8 +51,8 @@ export class VersioningService {
     return data?.data || null;
   }
 
-  private static async cleanupOldVersions(config: VersionConfig): Promise<void> {
-    for (const table of config.tables) {
+  private async cleanupOldVersions(): Promise<void> {
+    for (const table of this.config.tables) {
       const { data, error } = await supabase
         .from('versions')
         .select('id')
@@ -46,9 +61,9 @@ export class VersioningService {
 
       if (error) throw error;
 
-      if (data.length > config.maxVersions) {
+      if (data && data.length > this.config.maxVersions) {
         const idsToDelete = data
-          .slice(config.maxVersions)
+          .slice(this.config.maxVersions)
           .map(version => version.id);
 
         const { error: deleteError } = await supabase
@@ -61,12 +76,12 @@ export class VersioningService {
     }
   }
 
-  static async saveVersion(config: VersionConfig, table: TableName, data: any[]): Promise<void> {
+  public async saveVersion(table: TableName, data: any[]): Promise<void> {
     await this.createVersion(table, data);
-    await this.cleanupOldVersions(config);
+    await this.cleanupOldVersions();
   }
 
-  static async restoreVersion(table: TableName): Promise<void> {
+  public async restoreVersion(table: TableName): Promise<void> {
     const data = await this.getLatestVersion(table);
     if (!data) throw new Error(`Keine Version für Tabelle ${table} gefunden`);
 
@@ -79,4 +94,7 @@ export class VersioningService {
 }
 
 // Beispiel für die Verwendung:
-export const versioningService = VersioningService.getInstance(); 
+export const versioningService = VersioningService.getInstance({
+  tables: ['user_stats', 'answered_questions'] as TableName[],
+  maxVersions: 10
+}); 
