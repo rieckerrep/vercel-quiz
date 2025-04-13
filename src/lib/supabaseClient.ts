@@ -1,7 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { Database } from "./supabase";
 
-// Überprüfe, ob die Umgebungsvariablen vorhanden sind
 if (!import.meta.env.VITE_SUPABASE_URL) {
   throw new Error('VITE_SUPABASE_URL ist nicht definiert');
 }
