@@ -815,6 +815,33 @@ CREATE TABLE IF NOT EXISTS "public"."user_stats" (
 ALTER TABLE "public"."user_stats" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."versions" (
+    "id" integer NOT NULL,
+    "table_name" character varying(255) NOT NULL,
+    "data" "jsonb" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE "public"."versions" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."versions_id_seq"
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE "public"."versions_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."versions_id_seq" OWNED BY "public"."versions"."id";
+
+
+
 ALTER TABLE ONLY "public"."levels" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."levels_id_seq"'::"regclass");
 
 
@@ -832,6 +859,10 @@ ALTER TABLE ONLY "public"."shop_avatars" ALTER COLUMN "id" SET DEFAULT "nextval"
 
 
 ALTER TABLE ONLY "public"."universities" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."universities_id_seq"'::"regclass");
+
+
+
+ALTER TABLE ONLY "public"."versions" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."versions_id_seq"'::"regclass");
 
 
 
@@ -957,6 +988,11 @@ ALTER TABLE ONLY "public"."user_avatars"
 
 ALTER TABLE ONLY "public"."user_stats"
     ADD CONSTRAINT "user_stats_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."versions"
+    ADD CONSTRAINT "versions_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1581,6 +1617,18 @@ GRANT ALL ON TABLE "public"."user_avatars" TO "service_role";
 GRANT ALL ON TABLE "public"."user_stats" TO "anon";
 GRANT ALL ON TABLE "public"."user_stats" TO "authenticated";
 GRANT ALL ON TABLE "public"."user_stats" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."versions" TO "anon";
+GRANT ALL ON TABLE "public"."versions" TO "authenticated";
+GRANT ALL ON TABLE "public"."versions" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."versions_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."versions_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."versions_id_seq" TO "service_role";
 
 
 

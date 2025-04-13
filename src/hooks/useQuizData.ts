@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Question } from '../types/question';
+import { Database, FormattedQuestion, adaptDatabaseQuestion } from '../types/supabase';
 
 export const useQuizData = (chapterId: number) => {
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [questions, setQuestions] = useState<FormattedQuestion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,7 +18,8 @@ export const useQuizData = (chapterId: number) => {
 
         if (error) throw error;
 
-        setQuestions(data);
+        const formattedQuestions = (data || []).map(adaptDatabaseQuestion);
+        setQuestions(formattedQuestions);
         setError(null);
       } catch (err) {
         console.error('Fehler beim Laden der Fragen:', err);

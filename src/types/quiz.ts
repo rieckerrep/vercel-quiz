@@ -136,4 +136,25 @@ export type AnsweredSubQuestion = {
   user_id: string;
   is_correct: boolean;
   answered_at: string;
-}; 
+};
+
+export interface LevelData {
+  id: number;
+  level_title: string;
+  xp_required: number;
+  level_image: string;
+  level_number: number;
+}
+
+export interface LeagueData {
+  id: number;
+  name: string;
+  league_img: string;
+}
+
+export interface DragPair {
+  id: number;
+  group_id: number;
+  drag_text: string;
+  correct_match: string;
+} 

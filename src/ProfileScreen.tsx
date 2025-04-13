@@ -5,37 +5,10 @@ import { supabase } from "./lib/supabaseClient";
 import { userService } from "./api/userService";
 import { authService } from "./api/authService";
 import { Database } from "./lib/supabase";
+import { Profile, UserStats } from "./types/profile";
+import { LevelData, LeagueData } from "./types/quiz";
 
 /** Datenstrukturen **/
-interface Profile {
-  username: string;
-  university: string;
-  avatar_url: string;
-}
-
-interface UserStats {
-  gold: number;
-  silver: number;
-  bronze: number;
-  total_coins: number;
-  total_xp: number;
-  level: number;
-  current_league: string;
-}
-
-interface LevelData {
-  id: number;
-  level_title: string; // Aus DB: Spalte "level_title"
-  xp_required: number;
-  level_image: string;
-}
-
-interface LeagueData {
-  id: number;
-  name: string;
-  league_img: string;
-}
-
 interface ProfileScreenProps {
   user: any;
   profile: any;
@@ -89,7 +62,15 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
         .select("username, university, avatar_url")
         .eq("id", user.id)
         .maybeSingle();
-      setProfile(profileData || null);
+      setProfile(profileData ? {
+        ...profileData,
+        id: user.id,
+        level: 0,
+        xp: 0,
+        coins: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      } : null);
 
       // B) Stats
       const { data: statsData } = await supabase
@@ -125,7 +106,13 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
         .eq("id", stats.level)
         .maybeSingle();
       if (levelRow) {
-        setLevelData(levelRow);
+        setLevelData({
+          id: levelRow.id,
+          level_title: levelRow.level_title || "Unbekanntes Level",
+          xp_required: levelRow.xp_required,
+          level_image: levelRow.level_image || "",
+          level_number: levelRow.level_number
+        });
         // Nächstes Level
         const nextLevelId = levelRow.id + 1;
         const { data: nextLevel } = await supabase
@@ -146,7 +133,11 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
         .eq("name", stats.current_league)
         .maybeSingle();
       if (leagueRow) {
-        setLeagueData(leagueRow);
+        setLeagueData({
+          id: leagueRow.id,
+          name: leagueRow.name,
+          league_img: leagueRow.league_img || ""
+        });
       }
     })();
   }, [stats]);
@@ -328,6 +319,28 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
   const currentLevelXp = xpNow - (levelData?.xp_required || 0);
   const nextLevelDiff = xpNext - (levelData?.xp_required || 0);
 
+  const renderMedals = () => {
+    const medalCounts = {
+      gold: stats?.gold || 0,
+      silver: stats?.silver || 0,
+      bronze: stats?.bronze || 0
+    };
+
+    return (
+      <div className="medals-container">
+        <div className="medal gold">
+          <span className="count">{medalCounts.gold}</span>
+        </div>
+        <div className="medal silver">
+          <span className="count">{medalCounts.silver}</span>
+        </div>
+        <div className="medal bronze">
+          <span className="count">{medalCounts.bronze}</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <motion.div 
       className="profile-screen-container bg-[#151923]"
@@ -475,69 +488,7 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
               <h2 className="text-2xl font-bold text-white mb-3 md:mb-0">{profile.username}</h2>
               
               <div className="flex space-x-6">
-                {/* Medaillen */}
-                <motion.div 
-                  className="flex items-center space-x-1"
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.6 }}
-                >
-                  <img
-                    className="w-6 h-6"
-                    src="https://lqoulygftdjbnfxkrihy.supabase.co/storage/v1/object/public/quiz-medals//Goldmedaille.svg"
-                    alt="Gold"
-                  />
-                  <motion.span 
-                    className="text-yellow-400 font-bold"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.7 }}
-                  >
-                    {animatedMedals.gold}
-                  </motion.span>
-                </motion.div>
-                
-                <motion.div 
-                  className="flex items-center space-x-1"
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.7 }}
-                >
-                  <img
-                    className="w-6 h-6"
-                    src="https://lqoulygftdjbnfxkrihy.supabase.co/storage/v1/object/public/quiz-medals//Silbermedaille.svg"
-                    alt="Silber"
-                  />
-                  <motion.span 
-                    className="text-gray-300 font-bold"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.8 }}
-                  >
-                    {animatedMedals.silver}
-                  </motion.span>
-                </motion.div>
-                
-                <motion.div 
-                  className="flex items-center space-x-1"
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.8 }}
-                >
-                  <img
-                    className="w-6 h-6"
-                    src="https://lqoulygftdjbnfxkrihy.supabase.co/storage/v1/object/public/quiz-medals//Bronzemedaille.svg"
-                    alt="Bronze"
-                  />
-                  <motion.span 
-                    className="text-amber-700 font-bold"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.9 }}
-                  >
-                    {animatedMedals.bronze}
-                  </motion.span>
-                </motion.div>
+                {renderMedals()}
               </div>
             </div>
             

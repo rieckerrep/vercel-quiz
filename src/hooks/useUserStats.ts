@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { UserStats } from '../lib/supabase';
+import { useSupabaseTable } from './useSupabaseTable';
+import { Database } from '../lib/supabase';
+import { UserStats } from '../types/quiz';
 
 export const useUserStats = (userId?: string) => {
   const [data, setData] = useState<UserStats | null>(null);

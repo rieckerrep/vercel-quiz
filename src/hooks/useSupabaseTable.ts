@@ -2,10 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabaseClient';
 import { Database } from '../lib/supabase';
 
-// Definiere einen Typ, der alle Tabellennamen als String akzeptiert
-// Das ist nötig, da TypeScript strenge Typisierung für die Tabellennamen verlangt,
-// wir aber dynamische Anfragen über verschiedene Tabellen machen wollen
-export type AnyTable = keyof Database['public']['Tables'] | string;
+// Definiere einen Typ, der alle Tabellennamen aus der Datenbank enthält
+export type TableName = keyof Database['public']['Tables'];
 
 /**
  * Hook zum Zugriff auf eine Supabase-Tabelle
@@ -13,7 +11,7 @@ export type AnyTable = keyof Database['public']['Tables'] | string;
  * @param options Optionen für die Datenabfrage
  */
 export function useSupabaseTable(
-  tableName: AnyTable,
+  tableName: TableName,
   options?: {
     where?: { column: string; value: any }[];
     orderBy?: { column: string; ascending?: boolean };
@@ -39,7 +37,7 @@ export function useSupabaseTable(
     if (options?.where && options.where.length > 0) {
       console.log("[useSupabaseTable] Applying filters:", options.where);
       options.where.forEach(filter => {
-        query = query.eq(filter.column, filter.value) as any;
+        query = query.eq(filter.column, filter.value);
       });
     }
 

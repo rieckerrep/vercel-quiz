@@ -3,6 +3,8 @@ import { supabase } from "./lib/supabaseClient";
 import { motion } from "framer-motion";
 import { goldMedal, silverMedal, bronzeMedal, scaleIcon } from "./assets/images";
 import "./EndScreen.css";
+import { Profile, UserStats } from "./types/profile";
+import { LevelData, LeagueData } from "./types/quiz";
 
 export interface EndScreenProps {
   roundXp: number;
@@ -15,34 +17,6 @@ export interface EndScreenProps {
   onOpenShop: () => void;
   onOpenProfile: () => void;
   correctAnswers: number;
-}
-
-interface Profile {
-  username: string;
-  university: string;
-  avatar_url: string;
-}
-
-interface UserStats {
-  gold: number;
-  silver: number;
-  bronze: number;
-  total_xp: number;
-  level: number;
-  current_league: string;
-}
-
-interface LevelData {
-  id: number;
-  level_title: string;
-  xp_required: number;
-  level_image: string;
-}
-
-interface LeagueData {
-  id: number;
-  name: string;
-  league_img: string;
 }
 
 export default function EndScreen({
@@ -129,23 +103,39 @@ export default function EndScreen({
 
       // Profil laden
       const { data: profileData } = await supabase
+        .from("user_stats")
+        .select("id, username, avatar_url, level, total_xp, total_coins, created_at, updated_at")
+        .eq("user_id", user.id)
+        .single();
+
+      const { data: userProfile } = await supabase
         .from("profiles")
-        .select("username, university, avatar_url")
+        .select("university")
         .eq("id", user.id)
-        .maybeSingle();
-      setProfile(profileData || null);
+        .single();
+
+      if (profileData) {
+        setProfile({
+          id: user.id,
+          username: profileData.username || "",
+          avatar_url: profileData.avatar_url || "",
+          level: profileData.level || 1,
+          xp: profileData.total_xp || 0,
+          coins: profileData.total_coins || 0,
+          created_at: profileData.created_at || new Date().toISOString(),
+          updated_at: profileData.updated_at || new Date().toISOString(),
+          university: userProfile?.university || ""
+        });
+      }
 
       // User-Stats laden
       const { data: statsData } = await supabase
         .from("user_stats")
-        .select(
-          "gold_medals, silver_medals, bronze_medals, total_xp, level, current_league"
-        )
+        .select("*")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (statsData) {
-        // Stats setzen
         setStats({
           gold: statsData.gold_medals || 0,
           silver: statsData.silver_medals || 0,
@@ -153,6 +143,7 @@ export default function EndScreen({
           total_xp: statsData.total_xp || 0,
           level: statsData.level || 1,
           current_league: statsData.current_league || "Holzliga",
+          total_coins: statsData.total_coins || 0
         });
 
         // Medaillen-Zähler direkt setzen
@@ -173,7 +164,7 @@ export default function EndScreen({
         // Level laden
         const { data: levelRows, error: levelError } = await supabase
           .from("levels")
-          .select("id, level_title, xp_required, level_image")
+          .select("id, level_title, xp_required, level_image, level_number")
           .eq("id", stats.level)
           .single();
 
@@ -183,7 +174,13 @@ export default function EndScreen({
         }
 
         if (levelRows) {
-          setLevelData(levelRows);
+          setLevelData({
+            id: levelRows.id,
+            level_title: levelRows.level_title || "Unbekanntes Level",
+            xp_required: levelRows.xp_required,
+            level_image: levelRows.level_image || "",
+            level_number: levelRows.level_number
+          });
         }
 
         // Liga laden
@@ -199,7 +196,11 @@ export default function EndScreen({
         }
 
         if (leagueRows) {
-          setLeagueData(leagueRows);
+          setLeagueData({
+            id: leagueRows.id,
+            name: leagueRows.name,
+            league_img: leagueRows.league_img || ""
+          });
         }
       } catch (error) {
         console.error("Fehler beim Laden der Daten:", error);
@@ -303,10 +304,13 @@ export default function EndScreen({
         // Stats und Animation aktualisieren
         if (updatedStats) {
           setStats(prev => ({
-            ...prev!,
-            gold: updatedStats.gold_medals,
-            silver: updatedStats.silver_medals,
-            bronze: updatedStats.bronze_medals,
+            gold: updatedStats.gold_medals || 0,
+            silver: updatedStats.silver_medals || 0,
+            bronze: updatedStats.bronze_medals || 0,
+            total_xp: updatedStats.total_xp || 0,
+            level: updatedStats.level || 1,
+            current_league: updatedStats.current_league || "Holzliga",
+            total_coins: updatedStats.total_coins || 0
           }));
 
           // Animation starten
@@ -316,9 +320,9 @@ export default function EndScreen({
           let step = 0;
           const startCounts = { ...animatedMedalCounts };
           const targetCounts = {
-            gold: updatedStats.gold_medals,
-            silver: updatedStats.silver_medals,
-            bronze: updatedStats.bronze_medals,
+            gold: updatedStats.gold_medals || 0,
+            silver: updatedStats.silver_medals || 0,
+            bronze: updatedStats.bronze_medals || 0,
           };
 
           const timer = setInterval(() => {
@@ -403,6 +407,91 @@ export default function EndScreen({
     ? Math.round((roundXp / possibleRoundXp) * 100)
     : 0;
 
+  // Null-Checks für Medaillen
+  const goldCount = animatedMedalCounts.gold;
+  const silverCount = animatedMedalCounts.silver;
+  const bronzeCount = animatedMedalCounts.bronze;
+
+  const updateProfile = async () => {
+    const { data: profileData, error: profileError } = await supabase
+      .from('user_stats')
+      .select('id, username, avatar_url, level, total_xp, total_coins, created_at, updated_at')
+      .eq('user_id', profile?.id)
+      .single();
+
+    const { data: userProfile } = await supabase
+      .from("profiles")
+      .select("university")
+      .eq("id", profile?.id)
+      .single();
+
+    if (profileError) {
+      console.error('Error fetching profile:', profileError);
+      return;
+    }
+
+    if (profileData) {
+      setProfile({
+        id: profileData.id,
+        username: profileData.username || "",
+        avatar_url: profileData.avatar_url || "",
+        level: profileData.level || 1,
+        xp: profileData.total_xp || 0,
+        coins: profileData.total_coins || 0,
+        created_at: profileData.created_at || new Date().toISOString(),
+        updated_at: profileData.updated_at || new Date().toISOString(),
+        university: userProfile?.university || ""
+      });
+    }
+  };
+
+  const updateStats = async () => {
+    const { data: statsData, error: statsError } = await supabase
+      .from('user_stats')
+      .select('*')
+      .eq('user_id', profile?.id)
+      .single();
+
+    if (statsError) {
+      console.error('Error fetching stats:', statsError);
+      return;
+    }
+
+    if (statsData) {
+      setStats({
+        gold: statsData.gold_medals || 0,
+        silver: statsData.silver_medals || 0,
+        bronze: statsData.bronze_medals || 0,
+        total_xp: statsData.total_xp || 0,
+        level: statsData.level || 1,
+        current_league: statsData.current_league || 'Bronze',
+        total_coins: statsData.total_coins || 0
+      });
+    }
+  };
+
+  const renderMedals = () => {
+    const medalCounts = {
+      gold: stats?.gold || 0,
+      silver: stats?.silver || 0,
+      bronze: stats?.bronze || 0
+    };
+
+    return (
+      <div className="medals-container">
+        <div className="medal gold">
+          <span className="count">{medalCounts.gold}</span>
+        </div>
+        <div className="medal silver">
+          <span className="count">{medalCounts.silver}</span>
+        </div>
+        <div className="medal bronze">
+          <span className="count">{medalCounts.bronze}</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <motion.div 
       className="quiz-container min-h-[600px] bg-[#151923] rounded-lg shadow-lg"
@@ -455,9 +544,9 @@ export default function EndScreen({
               transition={{ type: "spring", delay: 0.5 }}
             >
               <img
-                src={profile.avatar_url}
+                src={profile?.avatar_url || undefined}
                 alt="Avatar"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover avatar-image"
               />
             </motion.div>
             
@@ -516,122 +605,7 @@ export default function EndScreen({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <motion.div 
-              className="flex flex-col items-center"
-              animate={medalType === "Gold" ? { 
-                scale: [1, 1.3, 1]
-              } : {}}
-              transition={{ 
-                duration: 0.5,
-                delay: 1.0 // Verzögerung nach Container-Animation
-              }}
-            >
-              <motion.img 
-                src={goldMedal} 
-                alt="Gold" 
-                className="w-8 h-8 mb-1"
-                animate={medalType === "Gold" ? {
-                  y: [0, -10, 0],
-                  filter: ["brightness(1)", "brightness(1.5)", "brightness(1)"]
-                } : {}}
-                transition={{ 
-                  duration: 0.5,
-                  delay: 1.0 // Verzögerung nach Container-Animation
-                }}
-              />
-              <motion.span 
-                className="text-yellow-400 font-bold"
-                key={animatedMedalCounts.gold}
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ 
-                  type: "spring",
-                  stiffness: 200,
-                  damping: 10,
-                  delay: 1.0 // Verzögerung nach Container-Animation
-                }}
-              >
-                {animatedMedalCounts.gold}
-              </motion.span>
-            </motion.div>
-            
-            <motion.div 
-              className="flex flex-col items-center"
-              animate={medalType === "Silber" ? { 
-                scale: [1, 1.3, 1]
-              } : {}}
-              transition={{ 
-                duration: 0.5,
-                delay: 1.0 // Verzögerung nach Container-Animation
-              }}
-            >
-              <motion.img 
-                src={silverMedal} 
-                alt="Silber" 
-                className="w-8 h-8 mb-1"
-                animate={medalType === "Silber" ? {
-                  y: [0, -10, 0],
-                  filter: ["brightness(1)", "brightness(1.5)", "brightness(1)"]
-                } : {}}
-                transition={{ 
-                  duration: 0.5,
-                  delay: 1.0 // Verzögerung nach Container-Animation
-                }}
-              />
-              <motion.span 
-                className="text-gray-300 font-bold"
-                key={animatedMedalCounts.silver}
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ 
-                  type: "spring",
-                  stiffness: 200,
-                  damping: 10,
-                  delay: 1.0 // Verzögerung nach Container-Animation
-                }}
-              >
-                {animatedMedalCounts.silver}
-              </motion.span>
-            </motion.div>
-            
-            <motion.div 
-              className="flex flex-col items-center"
-              animate={medalType === "Bronze" ? { 
-                scale: [1, 1.3, 1]
-              } : {}}
-              transition={{ 
-                duration: 0.5,
-                delay: 1.0 // Verzögerung nach Container-Animation
-              }}
-            >
-              <motion.img 
-                src={bronzeMedal} 
-                alt="Bronze" 
-                className="w-8 h-8 mb-1"
-                animate={medalType === "Bronze" ? {
-                  y: [0, -10, 0],
-                  filter: ["brightness(1)", "brightness(1.5)", "brightness(1)"]
-                } : {}}
-                transition={{ 
-                  duration: 0.5,
-                  delay: 1.0 // Verzögerung nach Container-Animation
-                }}
-              />
-              <motion.span 
-                className="text-amber-700 font-bold"
-                key={animatedMedalCounts.bronze}
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ 
-                  type: "spring",
-                  stiffness: 200,
-                  damping: 10,
-                  delay: 1.0 // Verzögerung nach Container-Animation
-                }}
-              >
-                {animatedMedalCounts.bronze}
-              </motion.span>
-            </motion.div>
+            {renderMedals()}
           </motion.div>
           
           <div className="mt-auto text-center">

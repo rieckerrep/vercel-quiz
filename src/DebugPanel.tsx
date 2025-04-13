@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useQuiz } from "./QuizContext";
-import { useQuestions } from "./useQuestions";
+import { useQuizContext } from './context/QuizContext';
+import { useQuizData } from './hooks/useQuizData';
 import { quizLogger } from "./EventLogger";
 
 interface DebugPanelProps {
@@ -15,9 +15,9 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ isVisible, chapterId, userId })
     roundXp, 
     roundCoins, 
     possibleRoundXp 
-  } = useQuiz();
+  } = useQuizContext();
   
-  const { data: questions, isLoading: questionsLoading } = useQuestions(chapterId);
+  const { questions, isLoading: questionsLoading } = useQuizData(chapterId);
   const [events, setEvents] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'status' | 'events'>('status');
   
