@@ -27,12 +27,10 @@ vi.mock('../supabaseClient', () => ({
 // Mock für NotificationService
 vi.mock('../services/notificationService', () => ({
   notificationService: {
-    showSuccess: vi.fn(),
-    showError: vi.fn(),
-    showInfo: vi.fn(),
-    showWarning: vi.fn(),
-    showErrorFromCode: vi.fn(),
-    showSuccessFromCode: vi.fn()
+    error: vi.fn(),
+    success: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn()
   }
 }));
 
@@ -121,10 +119,8 @@ beforeEach(() => {
   });
   
   // NotificationService-Mock-Implementierungen zurücksetzen
-  vi.mocked(notificationService.showSuccess).mockReset();
-  vi.mocked(notificationService.showError).mockReset();
-  vi.mocked(notificationService.showInfo).mockReset();
-  vi.mocked(notificationService.showWarning).mockReset();
-  vi.mocked(notificationService.showErrorFromCode).mockReset();
-  vi.mocked(notificationService.showSuccessFromCode).mockReset();
+  vi.mocked(notificationService.error).mockReset();
+  vi.mocked(notificationService.success).mockReset();
+  vi.mocked(notificationService.info).mockReset();
+  vi.mocked(notificationService.warning).mockReset();
 }); 
