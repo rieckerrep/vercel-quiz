@@ -133,7 +133,7 @@ describe('apiClient', () => {
           error: null
         });
 
-      const result = await apiCall(mockApiFunction, { retryOnRateLimit: true });
+      const result = await apiCall(mockApiFunction, { requireAuth: false });
 
       expect(result.data).toEqual({ test: 'data' });
       expect(result.error).toBeNull();

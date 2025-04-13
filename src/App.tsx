@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import { QuizContainer } from "./QuizContainer";
 import { useUserStore } from './store/useUserStore';
@@ -102,7 +102,7 @@ function AppContent() {
           <svg className="w-12 h-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p>Fehler bei der Authentifizierung: {typeof authError === 'string' ? authError : authError.message}</p>
+          <p>Fehler bei der Authentifizierung: {authError}</p>
           <button 
             onClick={() => window.location.reload()} 
             className="mt-4 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
