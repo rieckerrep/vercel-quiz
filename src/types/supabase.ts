@@ -869,3 +869,24 @@ export const Constants = {
     Enums: {},
   },
 } as const
+
+export type FormattedQuestion = Database['public']['Tables']['questions']['Row'] & {
+  answers: {
+    A: string | null;
+    B: string | null;
+    C: string | null;
+    D: string | null;
+  };
+};
+
+export const adaptDatabaseQuestion = (question: Database['public']['Tables']['questions']['Row']): FormattedQuestion => {
+  return {
+    ...question,
+    answers: {
+      A: question['Antwort A'],
+      B: question['Antwort B'],
+      C: question['Antwort C'],
+      D: question['Antwort D']
+    }
+  };
+};
