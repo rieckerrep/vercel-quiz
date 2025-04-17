@@ -452,45 +452,32 @@ export const useQuizStore = create<QuizState>((set, get) => {
       const question = state.questions.find((q) => q.id === questionId);
       if (!question) return false;
 
-      // Bestimme die Korrektheit der Antwort basierend auf dem Fragetyp
       let isCorrect = false;
-      
+
+      // Bestimme die Korrektheit der Antwort basierend auf dem Fragetyp
       switch (question.type) {
-        case "true_false":
-          const dbAnswer = (question["Richtige Antwort"] || question.correct_answer || "").toLowerCase().trim();
-          const isDbAnswerTrue = ["true", "wahr", "1", "ja", "richtig"].includes(dbAnswer);
-          // Wenn der Benutzer "true" wählt und die Datenbankantwort auch "true" ist, ist es richtig
-          // Wenn der Benutzer "false" wählt und die Datenbankantwort "false" ist, ist es auch richtig
-          isCorrect = answer === "true" ? isDbAnswerTrue : !isDbAnswerTrue;
-          console.log("handleAnswer - true_false Überprüfung:", {
-            dbAnswer,
-            isDbAnswerTrue,
-            userAnswer: answer,
-            isCorrect
-          });
+        case "drag_drop":
+          // Für Drag & Drop Fragen
+          const dragDropAnswer = state.correctDragDropAnswer;
+          isCorrect = answer === dragDropAnswer;
           break;
-          
-        case "lueckentext":
-          // Für Lückentext: Die Antwort kommt bereits als "true" oder "false" String
-          isCorrect = answer === "true";
-          console.log("handleAnswer - lueckentext Überprüfung:", {
-            userAnswer: answer,
-            isCorrect
-          });
-          break;
-          
-        case "open_question":
-          // Für offene Fragen: Die Selbsteinschätzung wird direkt übernommen
-          isCorrect = answer === "true";
-          break;
-          
+
         case "multiple_choice":
-          // Für Multiple Choice: Die Antwort kommt bereits als "true" oder "false" String
-          isCorrect = answer === "true";
+          // Für Multiple Choice Fragen
+          const multipleChoiceAnswer = state.correctMultipleChoiceAnswer;
+          isCorrect = answer === multipleChoiceAnswer;
           break;
-          
+
+        case "true_false":
+          // Für True/False Fragen
+          const normalizedAnswer = answer.toLowerCase().trim();
+          const normalizedCorrect = (question["Richtige Antwort"] || question.correct_answer || "").toLowerCase().trim();
+          isCorrect = ["true", "wahr", "1", "ja", "richtig"].includes(normalizedAnswer) === 
+                     ["true", "wahr", "1", "ja", "richtig"].includes(normalizedCorrect);
+          break;
+
         default:
-          // Für alle anderen Fragetypen: Direkte Textvergleich
+          // Für alle anderen Fragetypen: Direkter Textvergleich
           const normalizedDbAnswer = (question["Richtige Antwort"] || question.correct_answer || "").toLowerCase().trim();
           isCorrect = answer.toLowerCase().trim() === normalizedDbAnswer;
       }
@@ -1042,8 +1029,12 @@ export const useQuizStore = create<QuizState>((set, get) => {
         setShowExplanation,
         setLastAnswerCorrect,
         setUserInputAnswer,
-        setIsAnswerSubmitted
+        setIsAnswerSubmitted,
+        isAnswerSubmitted
       } = get();
+
+      // Wenn die aktuelle Frage noch nicht beantwortet wurde, nichts tun
+      if (!isAnswerSubmitted) return;
 
       // Erhöhe den Index
       const nextIndex = currentQuestionIndex + 1;
@@ -1057,6 +1048,8 @@ export const useQuizStore = create<QuizState>((set, get) => {
 
       // Sonst zur nächsten Frage
       setCurrentQuestion(questions[nextIndex]);
+      
+      // Setze die States für die neue Frage zurück
       setShowExplanation(false);
       setLastAnswerCorrect(null);
       setUserInputAnswer("");
@@ -1416,7 +1409,7 @@ export const useQuizStore = create<QuizState>((set, get) => {
 
       const { error } = await supabase
         .from('user_stats')
-        .update({ total_xp: amount } as Partial<UserStats>)
+        .update({ total_xp: amount })
         .eq('user_id', user.id);
 
       if (error) throw error;
@@ -1428,7 +1421,7 @@ export const useQuizStore = create<QuizState>((set, get) => {
 
       const { error } = await supabase
         .from('user_stats')
-        .update({ total_coins: amount } as Partial<UserStats>)
+        .update({ total_coins: amount })
         .eq('user_id', user.id);
 
       if (error) throw error;

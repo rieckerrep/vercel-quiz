@@ -101,6 +101,7 @@ export interface Database extends GeneratedDatabase {
 }
 
 export type SubmitAnswerResult = Database['public']['Functions']['submit_answer']['Returns'];
+export type SubmitAnswerArgs = Database['public']['Functions']['submit_answer']['Args'];
 export type AnsweredQuestionsInsert = Database['public']['Tables']['answered_questions']['Insert'];
 export type Tables = Database['public']['Tables'];
 export type Functions = Database['public']['Functions'];
@@ -115,7 +116,7 @@ export interface ApiResponse<T> {
 
 type PublicSchema = Database['public'];
 
-export type RpcFunctionReturnType {
+export type RpcFunctionReturnType = {
   get_league_leaderboard: { username: string; xp: number }[];
   get_player_leaderboard: { username: string; xp: number }[];
   get_subject_breakdown_for_user: {
@@ -140,13 +141,11 @@ export type RpcFunctionReturnType {
   };
 }
 
-export type RpcReturnType<T extends Functions> = RpcFunctionReturnType[T];
+export type RpcReturnType<T extends keyof RpcFunctionReturnType> = RpcFunctionReturnType[T];
 
-export type RpcArgs<T extends Functions> = T extends 'submit_answer'
-  ? { p_user_id: string; p_question_id: number; p_is_correct: boolean }
-  : T extends 'get_league_leaderboard'
-  ? { league_name: string }
-  : Record<string, never>;
+export type RpcFunction = keyof Database['public']['Functions'];
+export type RpcArgs<T extends RpcFunction> = Database['public']['Functions'][T]['Args'];
+export type RpcReturns<T extends RpcFunction> = Database['public']['Functions'][T]['Returns'];
 
 export interface RpcFunctionParams {
   get_league_leaderboard: { league_name: string };

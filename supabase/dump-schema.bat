@@ -20,7 +20,7 @@ cd /d "C:\Users\marce\OneDrive\React-Entwicklungsumgebung\rieckerrepneu"
 
 REM 📄 Dump ausführen
 echo 🧠 Starte Supabase Dump...
-supabase db dump --schema public --password %SUPABASE_DB_PASSWORD% > "%BACKUP_DIR%\schema_%DATUM%.sql"
+supabase db dump --schema public --password %SUPABASE_DB_PASSWORD% > "%BACKUP_DIR%\schema_.sql"
 
 REM ✅ Abschlussmeldung
 echo ✅ Dump abgeschlossen: %BACKUP_DIR%\schema_%DATUM%.sql

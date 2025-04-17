@@ -206,6 +206,104 @@ $$;
 ALTER FUNCTION "public"."calculate_and_award_xp"("p_user_id" "uuid", "p_correct_question_ids" bigint[], "p_correct_subquestion_ids" bigint[]) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."check_answer"("p_question_id" integer, "p_answer" "text", "p_type" "text", "p_subquestion_id" integer DEFAULT NULL::integer) RETURNS boolean
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_correct_answer text;
+  v_is_correct boolean;
+BEGIN
+  CASE p_type
+    WHEN 'multiple_choice' THEN
+      SELECT "Richtige Antwort" INTO v_correct_answer
+      FROM questions
+      WHERE id = p_question_id;
+      
+      v_is_correct := LOWER(TRIM(p_answer)) = LOWER(TRIM(v_correct_answer));
+      
+    WHEN 'true_false' THEN
+      SELECT "Richtige Antwort" INTO v_correct_answer
+      FROM questions
+      WHERE id = p_question_id;
+      
+      v_is_correct := (
+        (LOWER(TRIM(p_answer)) = 'true' AND LOWER(TRIM(v_correct_answer)) = 'true') OR
+        (LOWER(TRIM(p_answer)) = 'false' AND LOWER(TRIM(v_correct_answer)) = 'false')
+      );
+      
+    WHEN 'drag_drop' THEN
+      SELECT COUNT(*) > 0 INTO v_is_correct
+      FROM dragdrop_pairs
+      WHERE question_id = p_question_id
+        AND source_text = p_answer;
+        
+    WHEN 'lueckentext' THEN
+      SELECT "Richtige Antwort" INTO v_correct_answer
+      FROM questions
+      WHERE id = p_question_id;
+      
+      v_is_correct := LOWER(TRIM(p_answer)) = LOWER(TRIM(v_correct_answer));
+
+    WHEN 'cases' THEN
+      IF p_subquestion_id IS NULL THEN
+        RAISE EXCEPTION 'Für Fallfragen muss eine Unterfrage-ID angegeben werden';
+      END IF;
+      
+      SELECT correct_answer INTO v_correct_answer
+      FROM cases_subquestions
+      WHERE id = p_subquestion_id;
+      
+      v_is_correct := LOWER(TRIM(p_answer)) = LOWER(TRIM(v_correct_answer));
+      
+    WHEN 'open_question' THEN
+      v_is_correct := true;
+      
+    ELSE
+      v_is_correct := false;
+  END CASE;
+  
+  RETURN v_is_correct;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."check_answer"("p_question_id" integer, "p_answer" "text", "p_type" "text", "p_subquestion_id" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."check_case_answers"("p_question_id" integer, "p_answers" "jsonb") RETURNS "jsonb"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_result jsonb;
+  v_subquestion record;
+  v_is_correct boolean;
+BEGIN
+  v_result := '[]'::jsonb;
+  
+  FOR v_subquestion IN 
+    SELECT id, correct_answer, statement_text
+    FROM cases_subquestions
+    WHERE question_id = p_question_id
+  LOOP
+    SELECT (jsonb_array_elements(p_answers)->>'answer')::text = v_subquestion.correct_answer
+    INTO v_is_correct
+    WHERE (jsonb_array_elements(p_answers)->>'subquestion_id')::integer = v_subquestion.id;
+    
+    v_result := v_result || jsonb_build_object(
+      'subquestion_id', v_subquestion.id,
+      'statement_text', v_subquestion.statement_text,
+      'is_correct', COALESCE(v_is_correct, false)
+    );
+  END LOOP;
+  
+  RETURN v_result;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."check_case_answers"("p_question_id" integer, "p_answers" "jsonb") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."create_dragdrop_group"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -735,215 +833,321 @@ $$;
 ALTER FUNCTION "public"."start_pvp_match"("user_id" "uuid", "opponent_id" "uuid") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_is_correct" boolean) RETURNS TABLE("xp_awarded" integer, "coins_awarded" integer, "new_progress" double precision, "streak" integer)
-    LANGUAGE "plpgsql"
+CREATE OR REPLACE FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_is_correct" boolean, "p_streak_boost_active" boolean DEFAULT false) RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
+DECLARE
+    v_xp_awarded INTEGER := 0;
+    v_coins_awarded INTEGER := 0;
+    v_chapter_id INTEGER;
+    v_current_progress INTEGER;
+    v_new_progress INTEGER;
+    v_base_xp INTEGER;
+    v_streak_count INTEGER;
+    already_answered BOOLEAN;
 BEGIN
-  -- Berechne XP und Münzen basierend auf der Antwort
-  DECLARE
-    v_xp INTEGER;
-    v_coins INTEGER;
-    v_progress FLOAT;
-    v_streak INTEGER;
-  BEGIN
-    -- Basis-XP und Münzen
-    v_xp := CASE WHEN p_is_correct THEN 10 ELSE 0 END;
-    v_coins := CASE WHEN p_is_correct THEN 5 ELSE 0 END;
-    
-    -- Berechne Fortschritt (Beispiel: 10% pro korrekte Antwort)
-    v_progress := CASE WHEN p_is_correct THEN 0.1 ELSE 0 END;
-    
-    -- Aktualisiere Streak
-    SELECT COALESCE(streak, 0) + 1 INTO v_streak
-    FROM user_stats
+    -- Anti-Farming: Prüfen, ob die Frage schon beantwortet wurde
+    SELECT TRUE INTO already_answered
+    FROM answered_questions
+    WHERE user_id = p_user_id AND question_id = p_question_id;
+
+    IF already_answered THEN
+        RETURN jsonb_build_object('error', '🚫 Diese Frage wurde bereits beantwortet.');
+    END IF;
+
+    -- Kapitel aus der Frage ermitteln
+    SELECT chapter_id INTO v_chapter_id
+    FROM questions
+    WHERE id = p_question_id;
+
+    -- Basis-XP aus question_type ermitteln
+    SELECT qt.base_xp INTO v_base_xp
+    FROM questions q
+    JOIN question_types qt ON q.question_type_id = qt.id
+    WHERE q.id = p_question_id;
+
+    -- Aktuelle Streak ermitteln
+    SELECT current_streak INTO v_streak_count
+    FROM user_streaks
     WHERE user_id = p_user_id;
-    
-    -- Aktualisiere Benutzerstatistiken
-    UPDATE user_stats
-    SET 
-      total_xp = COALESCE(total_xp, 0) + v_xp,
-      total_coins = COALESCE(total_coins, 0) + v_coins,
-      streak = CASE WHEN p_is_correct THEN v_streak ELSE 0 END,
-      questions_answered = COALESCE(questions_answered, 0) + 1,
-      correct_answers = CASE WHEN p_is_correct 
-        THEN COALESCE(correct_answers, 0) + 1 
-        ELSE COALESCE(correct_answers, 0) 
-      END
-    WHERE user_id = p_user_id;
-    
-    -- Speichere die beantwortete Frage
+
+    IF p_is_correct THEN
+        -- XP und Coins für richtige Antwort
+        v_xp_awarded := COALESCE(v_base_xp, 10); -- Fallback auf 10 XP wenn kein base_xp definiert
+        v_coins_awarded := 10;
+
+        -- Streak nur behandeln wenn Streak-Boost aktiv ist
+        IF p_streak_boost_active THEN
+            IF v_streak_count >= 2 THEN -- Bei 3. richtiger Antwort in Folge
+                v_xp_awarded := v_xp_awarded + 30; -- Bonus XP
+                -- Streak zurücksetzen
+                UPDATE user_streaks 
+                SET current_streak = 0,
+                    last_updated = NOW()
+                WHERE user_id = p_user_id;
+            ELSE
+                -- Streak erhöhen
+                UPDATE user_streaks 
+                SET current_streak = COALESCE(current_streak, 0) + 1,
+                    last_updated = NOW()
+                WHERE user_id = p_user_id;
+            END IF;
+        END IF;
+    ELSE
+        -- Münzverlust bei falscher Antwort
+        v_coins_awarded := -5;
+        -- Streak zurücksetzen
+        UPDATE user_streaks 
+        SET current_streak = 0,
+            last_updated = NOW()
+        WHERE user_id = p_user_id;
+    END IF;
+
+    -- Antwort speichern
     INSERT INTO answered_questions (
-      user_id,
-      question_id,
-      is_correct,
-      answered_at
+        user_id, 
+        question_id, 
+        is_correct, 
+        chapter_id, 
+        answered_at
     ) VALUES (
-      p_user_id,
-      p_question_id,
-      p_is_correct,
-      NOW()
+        p_user_id, 
+        p_question_id, 
+        p_is_correct, 
+        v_chapter_id, 
+        NOW()
     );
+
+    -- Update der user_stats
+    UPDATE user_stats
+    SET
+        total_xp = COALESCE(total_xp, 0) + v_xp_awarded,
+        total_coins = GREATEST(COALESCE(total_coins, 0) + v_coins_awarded, 0), -- Verhindert negative Coins
+        questions_answered = COALESCE(questions_answered, 0) + 1,
+        correct_answers = COALESCE(correct_answers, 0) + CASE WHEN p_is_correct THEN 1 ELSE 0 END,
+        last_played = NOW()
+    WHERE user_id = p_user_id;
+
+    -- Fortschritt berechnen
+    SELECT 
+        ROUND((COUNT(*)::float / (SELECT COUNT(*) FROM questions WHERE chapter_id = v_chapter_id)) * 100)::integer
+    INTO v_new_progress
+    FROM answered_questions
+    WHERE user_id = p_user_id 
+        AND chapter_id = v_chapter_id 
+        AND is_correct = TRUE;
+
+    -- Fortschritt speichern/aktualisieren
+    INSERT INTO quiz_progress (
+        user_id, 
+        chapter_id, 
+        progress, 
+        updated_at
+    ) VALUES (
+        p_user_id, 
+        v_chapter_id, 
+        v_new_progress, 
+        NOW()
+    )
+    ON CONFLICT (user_id, chapter_id)
+    DO UPDATE SET 
+        progress = v_new_progress, 
+        updated_at = NOW();
+
+    -- Daily Streak aktualisieren
+    PERFORM update_daily_streak(p_user_id);
     
-    -- Gib die Ergebnisse zurück
-    RETURN QUERY
-    SELECT v_xp, v_coins, v_progress, v_streak;
-  END;
+    -- Level-Check
+    PERFORM update_level_on_xp_change(p_user_id);
+
+    -- Medaillen prüfen und vergeben wenn Kapitel komplett
+    IF (
+        SELECT COUNT(DISTINCT aq.question_id) = (
+            SELECT COUNT(*) FROM questions WHERE chapter_id = v_chapter_id
+        )
+        FROM answered_questions aq
+        WHERE aq.user_id = p_user_id 
+            AND aq.chapter_id = v_chapter_id
+    ) THEN
+        PERFORM assign_medals_on_completion(p_user_id, v_chapter_id);
+    END IF;
+
+    RETURN jsonb_build_object(
+        'xp_awarded', v_xp_awarded,
+        'coins_awarded', v_coins_awarded,
+        'new_progress', v_new_progress,
+        'streak', COALESCE(v_streak_count, 0)
+    );
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('error', SQLERRM);
 END;
 $$;
 
 
-ALTER FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_is_correct" boolean) OWNER TO "postgres";
+ALTER FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_is_correct" boolean, "p_streak_boost_active" boolean) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" "uuid", "p_is_correct" boolean) RETURNS "jsonb"
+CREATE OR REPLACE FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_answer" "text", "p_subquestion_id" integer DEFAULT NULL::integer, "p_streak_boost_active" boolean DEFAULT false) RETURNS "jsonb"
     LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$DECLARE
-  v_xp_awarded INTEGER := 0;
-  v_coins_awarded INTEGER := 0;
-  v_chapter_id UUID;
-  v_current_progress INTEGER;
-  v_new_progress INTEGER;
-  v_base_xp INTEGER;
-  v_streak_count INTEGER;
-  already_answered BOOLEAN;
+    AS $$
+DECLARE
+    v_xp_awarded INTEGER := 0;
+    v_coins_awarded INTEGER := 0;
+    v_chapter_id INTEGER;
+    v_current_progress INTEGER;
+    v_new_progress INTEGER;
+    v_base_xp INTEGER;
+    v_streak_count INTEGER;
+    v_is_correct BOOLEAN;
+    already_answered BOOLEAN;
 BEGIN
-  -- Anti-Farming: Prüfen, ob die Frage schon beantwortet wurde
-  SELECT TRUE INTO already_answered
-  FROM answered_questions
-  WHERE user_id = p_user_id AND question_id = p_question_id;
+    -- Anti-Farming: Prüfen, ob die Frage schon beantwortet wurde
+    SELECT TRUE INTO already_answered
+    FROM answered_questions
+    WHERE user_id = p_user_id AND question_id = p_question_id;
 
-  IF already_answered THEN
-    RETURN json_build_object('error', '🚫 Diese Frage wurde bereits beantwortet.');
-  END IF;
-
-  -- Kapitel aus der Frage ermitteln
-  SELECT chapter_id INTO v_chapter_id
-  FROM questions
-  WHERE id = p_question_id;
-
-  -- Basis-XP aus question_type ermitteln
-  SELECT qt.base_xp INTO v_base_xp
-  FROM questions q
-  JOIN question_types qt ON q.question_type_id = qt.id_uuid
-  WHERE q.id = p_question_id;
-
-  -- Aktuelle Streak ermitteln
-  SELECT current_streak INTO v_streak_count
-  FROM user_streaks
-  WHERE user_id = p_user_id;
-
-  IF p_is_correct THEN
-    -- XP und Coins für richtige Antwort
-    v_xp_awarded := COALESCE(v_base_xp, 10); -- Fallback auf 10 XP wenn kein base_xp definiert
-    v_coins_awarded := 10;
-
-    -- Streak behandeln
-    IF v_streak_count >= 2 THEN -- Bei 3. richtiger Antwort in Folge
-      v_xp_awarded := v_xp_awarded + 30; -- Bonus XP
-      -- Streak zurücksetzen
-      UPDATE user_streaks 
-      SET current_streak = 0,
-          last_updated = NOW()
-      WHERE user_id = p_user_id;
-    ELSE
-      -- Streak erhöhen
-      UPDATE user_streaks 
-      SET current_streak = COALESCE(current_streak, 0) + 1,
-          last_updated = NOW()
-      WHERE user_id = p_user_id;
+    IF already_answered THEN
+        RETURN jsonb_build_object('error', '🚫 Diese Frage wurde bereits beantwortet.');
     END IF;
-  ELSE
-    -- Münzverlust bei falscher Antwort
-    v_coins_awarded := -5;
-    -- Streak zurücksetzen
-    UPDATE user_streaks 
-    SET current_streak = 0,
-        last_updated = NOW()
+
+    -- Prüfe ob die Antwort korrekt ist
+    SELECT check_answer(p_question_id, p_answer, p_subquestion_id) INTO v_is_correct;
+
+    -- Kapitel aus der Frage ermitteln
+    SELECT chapter_id INTO v_chapter_id
+    FROM questions
+    WHERE id = p_question_id;
+
+    -- Basis-XP aus question_type ermitteln
+    SELECT qt.base_xp INTO v_base_xp
+    FROM questions q
+    JOIN question_types qt ON q.question_type_id = qt.id
+    WHERE q.id = p_question_id;
+
+    -- Aktuelle Streak ermitteln
+    SELECT current_streak INTO v_streak_count
+    FROM user_streaks
     WHERE user_id = p_user_id;
-  END IF;
 
-  -- Antwort speichern
-  INSERT INTO answered_questions (
-    user_id, 
-    question_id, 
-    is_correct, 
-    chapter_id, 
-    answered_at
-  ) VALUES (
-    p_user_id, 
-    p_question_id, 
-    p_is_correct, 
-    v_chapter_id, 
-    NOW()
-  );
+    IF v_is_correct THEN
+        -- XP und Coins für richtige Antwort
+        v_xp_awarded := COALESCE(v_base_xp, 10); -- Fallback auf 10 XP wenn kein base_xp definiert
+        v_coins_awarded := 10;
 
-  -- Update der user_stats
-  UPDATE user_stats
-  SET
-    total_xp = COALESCE(total_xp, 0) + v_xp_awarded,
-    total_coins = GREATEST(COALESCE(total_coins, 0) + v_coins_awarded, 0), -- Verhindert negative Coins
-    questions_answered = COALESCE(questions_answered, 0) + 1,
-    correct_answers = COALESCE(correct_answers, 0) + CASE WHEN p_is_correct THEN 1 ELSE 0 END,
-    last_played = NOW()
-  WHERE user_id = p_user_id;
+        -- Streak nur behandeln wenn Streak-Boost aktiv ist
+        IF p_streak_boost_active THEN
+            IF v_streak_count >= 2 THEN -- Bei 3. richtiger Antwort in Folge
+                v_xp_awarded := v_xp_awarded + 30; -- Bonus XP
+                -- Streak zurücksetzen
+                UPDATE user_streaks 
+                SET current_streak = 0,
+                    last_updated = NOW()
+                WHERE user_id = p_user_id;
+            ELSE
+                -- Streak erhöhen
+                UPDATE user_streaks 
+                SET current_streak = COALESCE(current_streak, 0) + 1,
+                    last_updated = NOW()
+                WHERE user_id = p_user_id;
+            END IF;
+        END IF;
+    ELSE
+        -- Münzverlust bei falscher Antwort
+        v_coins_awarded := -5;
+        -- Streak zurücksetzen
+        UPDATE user_streaks 
+        SET current_streak = 0,
+            last_updated = NOW()
+        WHERE user_id = p_user_id;
+    END IF;
 
-  -- Fortschritt berechnen
-  SELECT 
-    ROUND((COUNT(*)::float / (SELECT COUNT(*) FROM questions WHERE chapter_id = v_chapter_id)) * 100)::integer
-  INTO v_new_progress
-  FROM answered_questions
-  WHERE user_id = p_user_id 
-    AND chapter_id = v_chapter_id 
-    AND is_correct = TRUE;
+    -- Antwort speichern
+    INSERT INTO answered_questions (
+        user_id, 
+        question_id, 
+        is_correct,
+        given_answer,
+        chapter_id, 
+        answered_at
+    ) VALUES (
+        p_user_id, 
+        p_question_id, 
+        v_is_correct,
+        p_answer,
+        v_chapter_id, 
+        NOW()
+    );
 
-  -- Fortschritt speichern/aktualisieren
-  INSERT INTO quiz_progress (
-    user_id, 
-    chapter_id, 
-    progress, 
-    updated_at
-  ) VALUES (
-    p_user_id, 
-    v_chapter_id, 
-    v_new_progress, 
-    NOW()
-  )
-  ON CONFLICT (user_id, chapter_id)
-  DO UPDATE SET 
-    progress = v_new_progress, 
-    updated_at = NOW();
+    -- Update der user_stats
+    UPDATE user_stats
+    SET
+        total_xp = COALESCE(total_xp, 0) + v_xp_awarded,
+        total_coins = GREATEST(COALESCE(total_coins, 0) + v_coins_awarded, 0), -- Verhindert negative Coins
+        questions_answered = COALESCE(questions_answered, 0) + 1,
+        correct_answers = COALESCE(correct_answers, 0) + CASE WHEN v_is_correct THEN 1 ELSE 0 END,
+        last_played = NOW()
+    WHERE user_id = p_user_id;
 
-  -- Daily Streak aktualisieren
-  PERFORM update_daily_streak(p_user_id);
-  
-  -- Level-Check
-  PERFORM update_level_on_xp_change(p_user_id);
+    -- Fortschritt berechnen
+    SELECT 
+        ROUND((COUNT(*)::float / (SELECT COUNT(*) FROM questions WHERE chapter_id = v_chapter_id)) * 100)::integer
+    INTO v_new_progress
+    FROM answered_questions
+    WHERE user_id = p_user_id 
+        AND chapter_id = v_chapter_id 
+        AND is_correct = TRUE;
 
-  -- Medaillen prüfen und vergeben wenn Kapitel komplett
-  IF (
-    SELECT COUNT(DISTINCT aq.question_id) = (
-      SELECT COUNT(*) FROM questions WHERE chapter_id = v_chapter_id
+    -- Fortschritt speichern/aktualisieren
+    INSERT INTO quiz_progress (
+        user_id, 
+        chapter_id, 
+        progress, 
+        updated_at
+    ) VALUES (
+        p_user_id, 
+        v_chapter_id, 
+        v_new_progress, 
+        NOW()
     )
-    FROM answered_questions aq
-    WHERE aq.user_id = p_user_id 
-      AND aq.chapter_id = v_chapter_id
-  ) THEN
-    PERFORM assign_medals_on_completion(p_user_id, v_chapter_id);
-  END IF;
+    ON CONFLICT (user_id, chapter_id)
+    DO UPDATE SET 
+        progress = v_new_progress, 
+        updated_at = NOW();
 
-  RETURN json_build_object(
-    'xp_awarded', v_xp_awarded,
-    'coins_awarded', v_coins_awarded,
-    'new_progress', v_new_progress,
-    'streak', COALESCE(v_streak_count, 0)
-  );
+    -- Daily Streak aktualisieren
+    PERFORM update_daily_streak(p_user_id);
+    
+    -- Level-Check
+    PERFORM update_level_on_xp_change(p_user_id);
+
+    -- Medaillen prüfen und vergeben wenn Kapitel komplett
+    IF (
+        SELECT COUNT(DISTINCT aq.question_id) = (
+            SELECT COUNT(*) FROM questions WHERE chapter_id = v_chapter_id
+        )
+        FROM answered_questions aq
+        WHERE aq.user_id = p_user_id 
+            AND aq.chapter_id = v_chapter_id
+    ) THEN
+        PERFORM assign_medals_on_completion(p_user_id, v_chapter_id);
+    END IF;
+
+    RETURN jsonb_build_object(
+        'xp_awarded', v_xp_awarded,
+        'coins_awarded', v_coins_awarded,
+        'new_progress', v_new_progress,
+        'streak', COALESCE(v_streak_count, 0),
+        'is_correct', v_is_correct
+    );
 EXCEPTION
-  WHEN OTHERS THEN
-    RETURN json_build_object('error', SQLERRM);
-END;$$;
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('error', SQLERRM);
+END;
+$$;
 
 
-ALTER FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" "uuid", "p_is_correct" boolean) OWNER TO "postgres";
+ALTER FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_answer" "text", "p_subquestion_id" integer, "p_streak_boost_active" boolean) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."submit_pvp_answer"("user_id" "uuid", "match_id" "uuid", "question_id" "uuid", "is_correct" boolean) RETURNS "text"
@@ -2190,6 +2394,11 @@ ALTER TABLE ONLY "public"."user_stats"
 
 
 
+ALTER TABLE ONLY "public"."user_stats"
+    ADD CONSTRAINT "user_stats_user_id_key" UNIQUE ("user_id");
+
+
+
 ALTER TABLE ONLY "public"."user_streaks"
     ADD CONSTRAINT "user_streaks_pkey" PRIMARY KEY ("user_id");
 
@@ -2719,6 +2928,18 @@ GRANT ALL ON FUNCTION "public"."calculate_and_award_xp"("p_user_id" "uuid", "p_c
 
 
 
+GRANT ALL ON FUNCTION "public"."check_answer"("p_question_id" integer, "p_answer" "text", "p_type" "text", "p_subquestion_id" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."check_answer"("p_question_id" integer, "p_answer" "text", "p_type" "text", "p_subquestion_id" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."check_answer"("p_question_id" integer, "p_answer" "text", "p_type" "text", "p_subquestion_id" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."check_case_answers"("p_question_id" integer, "p_answers" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."check_case_answers"("p_question_id" integer, "p_answers" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."check_case_answers"("p_question_id" integer, "p_answers" "jsonb") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."create_dragdrop_group"() TO "anon";
 GRANT ALL ON FUNCTION "public"."create_dragdrop_group"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."create_dragdrop_group"() TO "service_role";
@@ -2839,15 +3060,15 @@ GRANT ALL ON FUNCTION "public"."start_pvp_match"("user_id" "uuid", "opponent_id"
 
 
 
-GRANT ALL ON FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_is_correct" boolean) TO "anon";
-GRANT ALL ON FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_is_correct" boolean) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_is_correct" boolean) TO "service_role";
+GRANT ALL ON FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_is_correct" boolean, "p_streak_boost_active" boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_is_correct" boolean, "p_streak_boost_active" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_is_correct" boolean, "p_streak_boost_active" boolean) TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" "uuid", "p_is_correct" boolean) TO "anon";
-GRANT ALL ON FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" "uuid", "p_is_correct" boolean) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" "uuid", "p_is_correct" boolean) TO "service_role";
+GRANT ALL ON FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_answer" "text", "p_subquestion_id" integer, "p_streak_boost_active" boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_answer" "text", "p_subquestion_id" integer, "p_streak_boost_active" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_answer" "text", "p_subquestion_id" integer, "p_streak_boost_active" boolean) TO "service_role";
 
 
 

@@ -1,0 +1,20 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+-- .mdc: Ziel = Supabase RPC-Funktion vollständig und produktionsbereit erstellen
+-- Vorgaben für Cursor:
+-- 1. Die folgende PL/pgSQL-Funktion soll vollständig implementiert werden – **keine Platzhalter**, kein "Rest der Funktion"!
+-- 2. Der Code soll produktionsbereit sein und direkt via `supabase db push` in Supabase funktionieren.
+-- 3. Verwende `DROP FUNCTION IF EXISTS ...` mit exakter Signatur vor der Funktion, um doppelte Einträge zu vermeiden.
+-- 4. Ersetze oder erweitere die Funktion **immer vollständig** – keine "todo" oder ausgelassenen Blöcke.
+-- 5. Rückgabewert ist ein vollständiges `jsonb_build_object(...)` mit allen relevanten Keys (z. B. xp_awarded, coins_awarded, new_progress, streak, etc.).
+-- 6. Verwende ausschließlich reale Tabellen und Spalten aus dem aktuellen Supabase-Schema (kein Beispielcode).
+-- 7. Die Funktion muss ausführbar, testbar und logisch abgeschlossen sein – keine Lücken.
+-- 8. Ziel: Diese Datei soll beim Speichern direkt einsatzbereit sein, ohne dass manuell ergänzt werden muss.
+
+-- 💡 Hinweis: Nach Speichern wird diese Datei mit `supabase db push` deployed – stelle sicher, dass keine SQL-Fehler vorhanden sind.
+
+-- ✳️ Beispielname: submit_answer.sql
+-- ✳️ Speicherort: /supabase/functions/

@@ -6,7 +6,7 @@ import correctSound from '../../assets/sounds/correct.mp3';
 import wrongSound from '../../assets/sounds/wrong.mp3';
 import { useQuizEventBus } from './quizEventBus';
 import { Answer, SubAnswer } from './types';
-import { Database, AnsweredQuestionsInsert } from '../types/database.types';
+import { Database, AnsweredQuestionsInsert } from '../../types/supabase';
 import { useEffect } from 'react';
 import { useSoundStore } from '../../store/useSoundStore';
 import { useUserStore } from '../../store/useUserStore';

@@ -223,7 +223,7 @@ export function QuizContainer({
       // Speichere die Antwort in der Datenbank
       await submitAnswer({
         userId,
-        questionId: currentQuestion.id.toString(),
+        questionId: currentQuestion.id,
         selectedOption: isCorrect ? "true" : "false",
         isCorrect,
         chapterId
@@ -249,7 +249,7 @@ export function QuizContainer({
       // Speichere die Antwort
       await submitAnswer({
         userId,
-        questionId: currentQuestion.id.toString(),
+        questionId: currentQuestion.id,
         selectedOption: isTrue ? "true" : "false",
         isCorrect: isTrue,
         chapterId
@@ -354,7 +354,7 @@ export function QuizContainer({
 
       const { data, error } = await userService.submitAnswer(
         session.user.id,
-        questionId.toString(),
+        questionId,
         isCorrect
       );
 
@@ -383,17 +383,16 @@ export function QuizContainer({
     const isCorrect = answer === currentQuestion.correct_answer;
     setUserInputAnswer(answer);
     setIsAnswerSubmitted(true);
+    setShowExplanation(true);
+    setLastAnswerCorrect(isCorrect);
 
     try {
-      // Konvertiere numerische ID in einen String
-      const questionId = currentQuestion.id.toString();
-
       // Verwende userService mit streak_boost_active Parameter
       const { data, error, success } = await userService.submitAnswer(
         user.id,
-        questionId,
+        currentQuestion.id,
         isCorrect,
-        streakBoostUsed // Übergebe den Status des Streak-Boost Jokers
+        streakBoostUsed
       );
 
       if (!success || error) {
@@ -418,21 +417,8 @@ export function QuizContainer({
         playWrongSound();
         hideRewardAnimation();
       }
-
-      // Move to next question after delay
-      setTimeout(() => {
-        setShowRewardAnimation(false);
-        setUserInputAnswer('');
-        setCurrentQuestionIndex(currentQuestionIndex + 1);
-      }, 2000);
-
-      setIsCorrect(isCorrect);
-      setShowExplanation(true);
-      setLastAnswerCorrect(isCorrect);
-
     } catch (error) {
       console.error('Fehler beim Verarbeiten der Antwort:', error);
-      toast.error('Es gab einen Fehler beim Speichern deiner Antwort. Bitte versuche es erneut.');
     }
   };
 
