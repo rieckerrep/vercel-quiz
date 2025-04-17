@@ -4,6 +4,7 @@ import App from "./App";
 import "./index.css";
 import { initDebugMode } from "./QuizDebug";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import './styles/Progress.css';
 
 // Debug-Modus initialisieren, falls aktiviert
 initDebugMode();

@@ -268,6 +268,14 @@ export interface SupabaseDatabase {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      calculate_and_award_xp: {
+        Args: {
+          question_ids: number[]
+          subquestion_ids: number[]
+          user_id_param: string
+        }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

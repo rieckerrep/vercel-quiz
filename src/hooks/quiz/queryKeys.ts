@@ -12,5 +12,6 @@ export const queryKeys = {
   quizProgress: (userId: string): QueryKey => ['quizProgress', userId],
   subQuestions: (questionId: number): QueryKey => ['subQuestions', questionId],
   subAnswers: (userId: string, subQuestionId: number): QueryKey => ['subAnswers', userId, subQuestionId],
-  progress: (userId: string, chapterId: number): QueryKey => ['progress', userId, chapterId]
+  progress: (userId: string, chapterId: number) => 
+    ['progress', userId, chapterId] as const
 }; 

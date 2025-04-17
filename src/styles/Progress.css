@@ -1,0 +1,51 @@
+.progress-overview {
+  margin: 20px 0;
+  padding: 15px;
+  background-color: #1a1f2e;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.progress-overview h3 {
+  color: #fff;
+  margin-bottom: 10px;
+  font-size: 1.2rem;
+}
+
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 15px;
+  color: #a0aec0;
+}
+
+.progress-bars {
+  display: flex;
+  gap: 4px;
+  height: 8px;
+  background-color: #2d3748;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 100%;
+  transition: background-color 0.3s ease;
+}
+
+.progress-bar.unanswered {
+  background-color: #4a5568;
+}
+
+.progress-bar.correct {
+  background-color: #48bb78;
+}
+
+.progress-bar.wrong {
+  background-color: #e53e3e;
+}
+
+.progress-bar:hover {
+  opacity: 0.8;
+} 

@@ -25,6 +25,7 @@ import { User } from '@supabase/supabase-js';
 import { useQuizRewards } from "./hooks/quiz/useQuizRewards";
 import { SubmitAnswerResult } from './types/supabase';
 import { toast } from 'react-hot-toast';
+import { useProgress } from './hooks/quiz/useProgress';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
@@ -169,6 +170,8 @@ export function QuizContainer({
   // State für Quiz-Fortschritt und Belohnungen
   const [xpAwarded, setXpAwarded] = useState<number>(0);
   const [coinsAwarded, setCoinsAwarded] = useState<number>(0);
+
+  const { data: progressData } = useProgress(userId, chapterId);
 
   // Lade Fragen beim Start
   useEffect(() => {
@@ -1116,6 +1119,29 @@ export function QuizContainer({
           </div>
         </div>
       </div>
+
+      {progressData && (
+        <div className="progress-overview">
+          <h3>Dein Fortschritt</h3>
+          <div className="progress-stats">
+            <p>
+              Beantwortet: {progressData.filter(p => p.is_answered).length} / {progressData.length}
+            </p>
+            <p>
+              Richtig: {progressData.filter(p => p.is_correct).length} / {progressData.length}
+            </p>
+          </div>
+          <div className="progress-bars">
+            {progressData.map((item, index) => (
+              <div 
+                key={`progress-${item.question_id}-${index}`}
+                className={`progress-bar ${item.is_answered ? (item.is_correct ? 'correct' : 'wrong') : 'unanswered'}`}
+                title={`Frage ${item.question_id}: ${item.is_answered ? (item.is_correct ? 'Richtig' : 'Falsch') : 'Noch nicht beantwortet'}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -516,7 +516,7 @@ export const userService = {
       const { data, error } = await supabase.rpc('submit_answer', {
         p_user_id: userId,
         p_question_id: questionId,
-        p_is_correct: isCorrect,
+        p_answer: isCorrect,
         p_streak_boost_active: streakBoostActive
       });
 

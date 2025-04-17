@@ -2,101 +2,8 @@ import type { Database as GeneratedDatabase } from '../lib/database.types';
 
 export interface Database extends GeneratedDatabase {
   public: {
-    Functions: {
-      get_league_leaderboard: {
-        Args: { league_name: string };
-        Returns: { username: string; xp: number }[];
-      };
-      get_player_leaderboard: {
-        Args: Record<string, never>;
-        Returns: { username: string; xp: number }[];
-      };
-      get_subject_breakdown_for_user: {
-        Args: { _user_id: string };
-        Returns: {
-          subject_name: string;
-          correct_count: number;
-          wrong_count: number;
-          total: number;
-          correct_percent: number;
-        }[];
-      };
-      get_university_contributors: {
-        Args: { university_id: string };
-        Returns: { username: string; contribution: number }[];
-      };
-      get_university_leaderboard: {
-        Args: Record<string, never>;
-        Returns: { university_name: string; total_score: number }[];
-      };
-      reset_leagues: {
-        Args: Record<string, never>;
-        Returns: void;
-      };
-      reset_uni_leaderboard: {
-        Args: Record<string, never>;
-        Returns: void;
-      };
-      update_league_groups: {
-        Args: Record<string, never>;
-        Returns: void;
-      };
-      calculate_and_award_xp: {
-        Args: {
-          p_user_id: string;
-          p_correct_question_ids: number[];
-          p_correct_subquestion_ids: number[];
-        };
-        Returns: number;
-      };
-      update_level_on_xp_change: {
-        Args: { p_user_id: string };
-        Returns: { old_level: number; new_level: number; level_up: boolean };
-      };
-      submit_answer: {
-        Args: {
-          p_user_id: string;
-          p_question_id: number;
-          p_is_correct: boolean;
-          p_streak_boost_active?: boolean;
-        };
-        Returns: {
-          xp_awarded: number;
-          coins_awarded: number;
-          new_progress: number;
-          streak: number;
-        };
-      };
-    };
-    Tables: GeneratedDatabase['public']['Tables'] & {
-      answered_questions: {
-        Row: {
-          id: number;
-          user_id: string;
-          question_id: number;
-          is_correct: boolean;
-          answered_at: string;
-          chapter_id: number;
-          selected_option?: string;
-        };
-        Insert: {
-          user_id: string;
-          question_id: number;
-          is_correct: boolean;
-          answered_at?: string;
-          chapter_id: number;
-          selected_option?: string;
-        };
-        Update: {
-          user_id?: string;
-          question_id?: number;
-          is_correct?: boolean;
-          answered_at?: string;
-          chapter_id?: number;
-          selected_option?: string;
-        };
-      };
-    };
+    Functions: GeneratedDatabase['public']['Functions'];
+    Tables: GeneratedDatabase['public']['Tables'];
   };
 }
 
@@ -139,6 +46,11 @@ export type RpcFunctionReturnType = {
     new_progress: number;
     streak: number;
   };
+  get_user_progress: {
+    question_id: number;
+    is_answered: boolean;
+    is_correct: boolean;
+  }[];
 }
 
 export type RpcReturnType<T extends keyof RpcFunctionReturnType> = RpcFunctionReturnType[T];
@@ -167,6 +79,10 @@ export interface RpcFunctionParams {
     p_is_correct: boolean;
     p_streak_boost_active?: boolean;
   };
+  get_user_progress: {
+    p_user_id: string;
+    p_chapter_id: number;
+  };
 }
 
 export interface RpcFunctionResult {
@@ -176,4 +92,9 @@ export interface RpcFunctionResult {
     new_progress: number;
     streak: number;
   };
+  get_user_progress: {
+    question_id: number;
+    is_answered: boolean;
+    is_correct: boolean;
+  }[];
 }
