@@ -23,6 +23,7 @@ import { Question } from "./store/useQuizStore";
 import { useQuizData } from "./hooks/quiz/useQuizData";
 import { User } from '@supabase/supabase-js';
 import { useQuizRewards } from "./hooks/quiz/useQuizRewards";
+import { SubmitAnswerResult } from './types/supabase';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
@@ -35,6 +36,20 @@ interface QuizContainerProps {
   onOpenShop: () => void;
   onOpenLeaderboard: () => void;
   onOpenSettings: () => void;
+}
+
+// Typdefinitionen für die Antwortverarbeitung
+interface QuestionAnswer {
+  questionId: number;
+  isCorrect: boolean;
+}
+
+// Typdefinitionen
+interface SupabaseResponse {
+  xp_awarded: number;
+  coins_awarded: number;
+  new_progress: number;
+  streak: number;
 }
 
 export function QuizContainer({
@@ -149,6 +164,10 @@ export function QuizContainer({
     initQuiz,
     setChapterId
   } = useQuizStore();
+
+  // State für Quiz-Fortschritt und Belohnungen
+  const [xpAwarded, setXpAwarded] = useState<number>(0);
+  const [coinsAwarded, setCoinsAwarded] = useState<number>(0);
 
   // Lade Fragen beim Start
   useEffect(() => {
@@ -308,26 +327,161 @@ export function QuizContainer({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
 
-      // Berechne und vergebe XP
-      const { data: xpEarned, error } = await userService.calculateAndAwardXp(session.user.id, correctAnswers);
-
-      if (error) {
-        console.error('Fehler beim Berechnen der XP:', error);
-        return;
-      }
-
-      // Aktualisiere die Benutzerstatistiken
+      // Stats aktualisieren
       await incrementAnsweredQuestions();
       await incrementCorrectAnswers();
       await fetchUserStats(session.user.id);
 
-      // Setze die verdienten XP
-      if (typeof xpEarned === 'number') {
-        setRoundXp(xpEarned);
-      }
-
     } catch (error) {
       console.error('Fehler beim Abschließen der Runde:', error);
+    }
+  };
+
+  // Hilfsfunktion für UI-Updates
+  const showStreakAnimation = (streak: number) => {
+    // Streak-Animation anzeigen
+    if (streak >= 2) { // Bei 3er Streak (2 = dritte richtige Antwort)
+      showRewardAnimationWithSound(true); // Animation für korrekte Antwort
+    }
+  };
+
+  // Hilfsfunktion für die Supabase-Übermittlung
+  const submitToSupabase = async (questionId: number, isCorrect: boolean) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const { data, error } = await userService.submitAnswer(
+        session.user.id,
+        questionId,
+        isCorrect
+      );
+
+      if (error) {
+        console.error('Fehler beim Einreichen der Antwort:', error);
+        return;
+      }
+
+      if (data) {
+        setRoundXp(data.xp_awarded);
+        setRoundCoins(data.coins_awarded);
+        setProgress(data.new_progress);
+      }
+
+      // Stats aktualisieren
+      await fetchUserStats(session.user.id);
+    } catch (error) {
+      console.error('Fehler beim Einreichen der Antwort:', error);
+    }
+  };
+
+  // Hilfsfunktion für die Antwortverarbeitung
+  const processAnswer = async (answer: string) => {
+    if (!currentQuestion || !user) return;
+
+    const isCorrect = answer === currentQuestion.correct_answer;
+    setUserInputAnswer(answer);
+    setIsAnswerSubmitted(true);
+
+    try {
+      // Direkte Datenbankabfrage statt RPC
+      const { data, error } = await supabase
+        .from('answered_questions')
+        .insert({
+          user_id: user.id,
+          question_id: currentQuestion.id,
+          is_correct: isCorrect,
+          answered_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Berechne XP und Coins
+      const xp = isCorrect ? 10 : 0;
+      const coins = isCorrect ? 5 : 0;
+
+      // Update user stats
+      const { error: statsError } = await supabase
+        .from('user_stats')
+        .upsert({
+          user_id: user.id,
+          total_xp: xp,
+          total_coins: coins,
+          questions_answered: 1,
+          correct_answers: isCorrect ? 1 : 0,
+          streak: isCorrect ? 1 : 0
+        }, {
+          count: 'exact'
+        });
+
+      if (statsError) throw statsError;
+
+      // Update local state
+      const newProgress = Math.min(progress + (isCorrect ? 10 : 0), 100);
+      setProgress(newProgress);
+      updateStreak(isCorrect);
+      setXpAwarded(xp);
+      setCoinsAwarded(coins);
+
+      // Play sound and show animation
+      if (isCorrect) {
+        playCorrectSound();
+        setShowRewardAnimation(true);
+      } else {
+        playWrongSound();
+        hideRewardAnimation();
+      }
+
+      // Move to next question after delay
+      setTimeout(() => {
+        setShowRewardAnimation(false);
+        setUserInputAnswer('');
+        setCurrentQuestionIndex(currentQuestionIndex + 1);
+      }, 2000);
+
+      setIsCorrect(isCorrect);
+      setShowExplanation(true);
+      setLastAnswerCorrect(isCorrect);
+      
+      if (isCorrect) {
+        incrementLocalCorrectAnswers();
+      } else {
+        incrementLocalWrongAnswers();
+      }
+      
+      checkQuizEnd();
+    } catch (error) {
+      console.error('Fehler beim Verarbeiten der Antwort:', error);
+      // Fallback: Lokale Verarbeitung wenn Server nicht erreichbar
+      if (isCorrect) {
+        playCorrectSound();
+        setProgress(Math.min(progress + 10, 100));
+        updateStreak(true);
+        setXpAwarded(10);
+        setCoinsAwarded(5);
+      } else {
+        playWrongSound();
+        hideRewardAnimation();
+        setProgress(0);
+        updateStreak(false);
+        setXpAwarded(0);
+        setCoinsAwarded(0);
+      }
+      setTimeout(() => {
+        setShowRewardAnimation(false);
+        setUserInputAnswer('');
+        setCurrentQuestionIndex(currentQuestionIndex + 1);
+      }, 2000);
+    }
+  };
+
+  // Modifiziere die commonProps
+  const commonProps = {
+    onComplete: async (isCorrect: boolean) => {
+      if (isAnimationPlaying || !currentQuestion) return;
+      await processAnswer(currentQuestion.correct_answer);
     }
   };
 
@@ -474,35 +628,9 @@ export function QuizContainer({
       case "lueckentext":
         return (
           <LueckentextQuestion
-            questionText={currentQuestion.Frage || currentQuestion.question_text || ""}
-            correctAnswer={currentQuestion["Richtige Antwort"] || currentQuestion.correct_answer || ""}
-            onComplete={async (isCorrect) => {
-              if (isAnimationPlaying) return;
-              
-              // Verarbeite die Antwort im Store
-              const storeResult = await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
-              
-              // Setze die UI-States
-              setLastAnswerCorrect(storeResult);
-              setShowExplanation(true);
-              setIsAnswerSubmitted(true);
-              
-              // Vergebe Punkte und zeige Animation
-              await awardQuestion(currentQuestion.id, storeResult);
-              
-              // Prüfe, ob die Frage bereits beantwortet wurde
-              const isAlreadyAnswered = answeredQuestions.includes(currentQuestion.id);
-              if (!isAlreadyAnswered) {
-                await showRewardAnimationWithSound(storeResult);
-              } else {
-                // WICHTIG: Auch bei bereits beantworteten Fragen den Sound abspielen
-                if (storeResult) {
-                  await playCorrectSound();
-                } else {
-                  await playWrongSound();
-                }
-              }
-            }}
+            {...commonProps}
+            questionText={currentQuestion.Frage || ""}
+            correctAnswer={currentQuestion["Richtige Antwort"] || ""}
             hint={hintUsed ? currentQuestion.Begründung || "" : null}
           />
         );
@@ -511,8 +639,8 @@ export function QuizContainer({
           <div className="flex gap-2">
             <button
               onClick={async () => {
-                if (isAnimationPlaying) return;
-                await handleTrueFalseWithSound(true);
+                if (isAnimationPlaying || !currentQuestion) return;
+                await processAnswer(currentQuestion.correct_answer);
               }}
               className="answer-button flex-1 inline-flex items-center justify-center"
               disabled={isAnimationPlaying}
@@ -521,8 +649,8 @@ export function QuizContainer({
             </button>
             <button
               onClick={async () => {
-                if (isAnimationPlaying) return;
-                await handleTrueFalseWithSound(false);
+                if (isAnimationPlaying || !currentQuestion) return;
+                await processAnswer(currentQuestion.correct_answer);
               }}
               className="answer-button flex-1 inline-flex items-center justify-center"
               disabled={isAnimationPlaying}
@@ -553,7 +681,7 @@ export function QuizContainer({
                 (currentQuestion["Richtige Antwort"] || currentQuestion.correct_answer || "").trim().toLowerCase();
               
               // Verarbeite die Antwort zuerst
-              await handleAnswer(currentQuestion.id, selected);
+              await processAnswer(selected);
               await awardQuestion(currentQuestion.id, isCorrect);
               
               // Spiele den Sound nur einmal ab, nachdem die Antwort verarbeitet wurde
@@ -570,19 +698,8 @@ export function QuizContainer({
           <MultipleChoiceQuestion
             questionId={currentQuestion.id}
             onComplete={async (isCorrect: boolean) => {
-              if (isAnimationPlaying) return;
-              
-              // Verarbeite die Antwort im Store
-              const storeResult = await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
-              
-              // Setze die UI-States
-              setLastAnswerCorrect(storeResult);
-              setShowExplanation(true);
-              setIsAnswerSubmitted(true);
-              
-              // Vergebe Punkte und zeige Animation
-              await awardQuestion(currentQuestion.id, storeResult);
-              await showRewardAnimationWithSound(storeResult);
+              if (isAnimationPlaying || !currentQuestion) return;
+              await processAnswer(currentQuestion.correct_answer);
             }}
           />
         );
@@ -591,20 +708,8 @@ export function QuizContainer({
           <DragDropQuestion
             questionId={currentQuestion.id}
             onComplete={async (isCorrect: boolean) => {
-              if (isAnimationPlaying) return;
-              
-              // Verarbeite die Antwort
-              await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
-              
-              // Setze den Status für die Anzeige
-              setLastAnswerCorrect(isCorrect);
-              setShowExplanation(true);
-              
-              // Speichere die Antwort und zeige die Animation
-              await awardQuestion(currentQuestion.id, isCorrect);
-              
-              // Zeige die Animation mit Sound
-              await showRewardAnimationWithSound(isCorrect);
+              if (isAnimationPlaying || !currentQuestion) return;
+              await processAnswer(currentQuestion.correct_answer);
             }}
           />
         );
@@ -664,19 +769,8 @@ export function QuizContainer({
                               : "bg-gray-700 hover:bg-green-500 text-white"
                           }`}
                           onClick={async () => {
-                            if (isAnimationPlaying) return;
-                            
-                            // Verarbeite die Antwort im Store
-                            const storeResult = await handleAnswer(currentQuestion.id, "true");
-                            
-                            // Setze die UI-States
-                            setLastAnswerCorrect(storeResult);
-                            setShowExplanation(true);
-                            setIsAnswerSubmitted(true);
-                            
-                            // Vergebe Punkte und zeige Animation
-                            await awardQuestion(currentQuestion.id, storeResult);
-                            await showRewardAnimationWithSound(storeResult);
+                            if (isAnimationPlaying || !currentQuestion) return;
+                            await processAnswer(currentQuestion.correct_answer);
                           }}
                           disabled={lastAnswerCorrect !== null || isAnimationPlaying}
                         >
@@ -694,19 +788,8 @@ export function QuizContainer({
                               : "bg-gray-700 hover:bg-red-500 text-white"
                           }`}
                           onClick={async () => {
-                            if (isAnimationPlaying) return;
-                            
-                            // Verarbeite die Antwort im Store
-                            const storeResult = await handleAnswer(currentQuestion.id, "false");
-                            
-                            // Setze die UI-States
-                            setLastAnswerCorrect(storeResult);
-                            setShowExplanation(true);
-                            setIsAnswerSubmitted(true);
-                            
-                            // Vergebe Punkte und zeige Animation
-                            await awardQuestion(currentQuestion.id, storeResult);
-                            await showRewardAnimationWithSound(storeResult);
+                            if (isAnimationPlaying || !currentQuestion) return;
+                            await processAnswer(currentQuestion.correct_answer);
                           }}
                           disabled={lastAnswerCorrect !== null || isAnimationPlaying}
                         >
@@ -959,19 +1042,8 @@ export function QuizContainer({
                                 : "bg-gray-700 hover:bg-green-500 text-white"
                             }`}
                             onClick={async () => {
-                              if (isAnimationPlaying) return;
-                              
-                              // Verarbeite die Antwort im Store
-                              const storeResult = await handleAnswer(currentQuestion.id, "true");
-                              
-                              // Setze die UI-States
-                              setLastAnswerCorrect(storeResult);
-                              setShowExplanation(true);
-                              setIsAnswerSubmitted(true);
-                              
-                              // Vergebe Punkte und zeige Animation
-                              await awardQuestion(currentQuestion.id, storeResult);
-                              await showRewardAnimationWithSound(storeResult);
+                              if (isAnimationPlaying || !currentQuestion) return;
+                              await processAnswer(currentQuestion.correct_answer);
                             }}
                             disabled={lastAnswerCorrect !== null || isAnimationPlaying}
                           >
@@ -989,19 +1061,8 @@ export function QuizContainer({
                                 : "bg-gray-700 hover:bg-red-500 text-white"
                             }`}
                             onClick={async () => {
-                              if (isAnimationPlaying) return;
-                              
-                              // Verarbeite die Antwort im Store
-                              const storeResult = await handleAnswer(currentQuestion.id, "false");
-                              
-                              // Setze die UI-States
-                              setLastAnswerCorrect(storeResult);
-                              setShowExplanation(true);
-                              setIsAnswerSubmitted(true);
-                              
-                              // Vergebe Punkte und zeige Animation
-                              await awardQuestion(currentQuestion.id, storeResult);
-                              await showRewardAnimationWithSound(storeResult);
+                              if (isAnimationPlaying || !currentQuestion) return;
+                              await processAnswer(currentQuestion.correct_answer);
                             }}
                             disabled={lastAnswerCorrect !== null || isAnimationPlaying}
                           >
@@ -1055,7 +1116,7 @@ export function QuizContainer({
                         if (isAnimationPlaying) return;
                         
                         // Verarbeite die Antwort
-                        await handleAnswer(currentQuestion.id, isCorrect ? "true" : "false");
+                        await processAnswer(currentQuestion.correct_answer);
                         await awardQuestion(currentQuestion.id, isCorrect);
                         
                         // Zeige die Animation mit Sound
@@ -1068,7 +1129,8 @@ export function QuizContainer({
                   <div className="w-full flex flex-col gap-4 md:gap-6">
                     <button
                       onClick={async () => {
-                        await handleTrueFalseWithSound(true);
+                        if (isAnimationPlaying || !currentQuestion) return;
+                        await processAnswer(currentQuestion.correct_answer);
                       }}
                       className="w-full py-4 md:py-5 px-4 md:px-6 border-2 border-black text-black bg-white text-center font-medium text-base md:text-lg rounded-md md:rounded-none hover:bg-gray-100 transition-colors"
                       disabled={showExplanation || isAnimationPlaying}
@@ -1077,7 +1139,8 @@ export function QuizContainer({
                     </button>
                     <button
                       onClick={async () => {
-                        await handleTrueFalseWithSound(false);
+                        if (isAnimationPlaying || !currentQuestion) return;
+                        await processAnswer(currentQuestion.correct_answer);
                       }}
                       className="w-full py-4 md:py-5 px-4 md:px-6 border-2 border-black text-black bg-white text-center font-medium text-base md:text-lg rounded-md md:rounded-none hover:bg-gray-100 transition-colors"
                       disabled={showExplanation || isAnimationPlaying}

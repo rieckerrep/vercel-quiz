@@ -1,0 +1,30 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ # Git-Befehle in PowerShell
+
+## Wichtige Regeln für Git-Operationen
+
+1. KEINE `&&` in PowerShell verwenden
+   - PowerShell nutzt `;` als Befehlstrenner
+   - Befehle einzeln ausführen statt zu verketten
+   - Beispiel: `git checkout main; git pull` statt `git checkout main && git pull`
+
+2. Bei Git-Fehlern systematisch vorgehen:
+   - Bei "index.lock" Fehler: `rm .git/index.lock` ausführen
+   - Vor Branch-Wechsel lokalen und Remote-Stand vergleichen: `git show-ref branch-name`
+   - Bei Unterschieden erst mit `git fetch origin branch:branch` aktualisieren
+
+3. Branch-Wechsel Checkliste:
+   - Lokalen Branch-Stand prüfen: `git status`
+   - Remote-Stand prüfen: `git show-ref branch-name`
+   - Index.lock entfernen falls nötig
+   - Branch aktualisieren: `git fetch origin branch:branch`
+   - Zum Branch wechseln: `git checkout branch`
+
+4. Nach Branch-Wechsel:
+   - Status überprüfen: `git status`
+   - Commit-Historie vergleichen: `git log -n 1`
+   - Auf unerwartete Datei-Änderungen achten

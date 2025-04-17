@@ -1,8 +1,10 @@
 import { supabase } from '../lib/supabaseClient';
 import { apiCall, ApiResponse } from './apiClient';
-import { Database } from '../lib/supabase';
+import type { Database } from '../types/supabase';
 import { ERROR_MESSAGES } from '../constants/errorMessages';
 import { notificationService } from '../services/notificationService';
+import { SubmitAnswerResult } from '../types/supabase';
+import { RpcFunction, RpcReturnType, RpcArgs } from '../types/rpc';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
@@ -444,49 +446,58 @@ export const userService = {
   },
 
   /**
-   * XP für eine Runde berechnen und vergeben
+   * Antwort einreichen und Belohnungen erhalten
    */
-  calculateAndAwardXp: async (userId: string, correctAnswers: number): Promise<ApiResponse<number>> => {
-    return apiCall(async () => {
-      try {
-        // Berechne XP (10 XP pro richtige Antwort)
-        const xpEarned = correctAnswers * 10;
+  submitAnswer: async (
+    userId: string,
+    questionId: number,
+    isCorrect: boolean
+  ): Promise<ApiResponse<SubmitAnswerResult>> => {
+    try {
+      // @ts-expect-error - Supabase RPC type definitions are incomplete
+      const { data, error } = await supabase.rpc('submit_answer', {
+        p_user_id: userId,
+        p_question_id: questionId,
+        p_is_correct: isCorrect
+      });
 
-        // Hole aktuelle XP
-        const { data: currentStats, error: fetchError } = await supabase
-          .from('user_stats')
-          .select('total_xp')
-          .eq('user_id', userId)
-          .single();
-
-        if (fetchError) {
-          console.error('Fehler beim Abrufen der aktuellen XP:', fetchError);
-          return { data: 0, error: fetchError };
-        }
-
-        const currentXp = currentStats?.total_xp || 0;
-        const newXp = currentXp + xpEarned;
-
-        // Aktualisiere die Benutzerstatistiken
-        const { error } = await supabase
-          .from('user_stats')
-          .update({
-            total_xp: newXp,
-            last_played: new Date().toISOString()
-          })
-          .eq('user_id', userId);
-
-        if (error) {
-          console.error('Fehler beim Aktualisieren der XP:', error);
-          return { data: 0, error };
-        }
-
-        return { data: xpEarned, error: null };
-      } catch (error) {
-        console.error('Unerwarteter Fehler bei der XP-Berechnung:', error);
-        return { data: 0, error: error as Error };
+      if (error) {
+        console.error('Fehler beim Einreichen der Antwort:', error);
+        return { 
+          data: null, 
+          error: new Error(error.message),
+          success: false 
+        };
       }
-    });
+
+      if (!data || !Array.isArray(data) || data.length === 0) {
+        return { 
+          data: null, 
+          error: new Error('Keine Daten von der Datenbank erhalten'),
+          success: false 
+        };
+      }
+
+      // Die Backend-Funktion gibt ein Array mit einem Ergebnis zurück
+      const result = data[0] as unknown as SubmitAnswerResult;
+      return {
+        data: {
+          xp_awarded: result.xp_awarded,
+          coins_awarded: result.coins_awarded,
+          new_progress: result.new_progress,
+          streak: result.streak
+        },
+        error: null,
+        success: true
+      };
+    } catch (error) {
+      console.error('Fehler beim Einreichen der Antwort:', error);
+      return { 
+        data: null, 
+        error: error instanceof Error ? error : new Error('Ein unerwarteter Fehler ist aufgetreten'),
+        success: false 
+      };
+    }
   },
 };
 
