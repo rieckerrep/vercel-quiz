@@ -1,86 +1,117 @@
 -- File: check_answer.sql
-DROP FUNCTION IF EXISTS check_answer(
+DROP FUNCTION IF EXISTS public.check_answer(INTEGER, TEXT, TEXT, INTEGER, BOOLEAN);
+DROP FUNCTION IF EXISTS public.check_answer(INTEGER, TEXT, TEXT, INTEGER);
+DROP FUNCTION IF EXISTS public.check_answer(INTEGER, TEXT, TEXT);
+DROP FUNCTION IF EXISTS check_answer(INTEGER, TEXT, TEXT, INTEGER, BOOLEAN);
+DROP FUNCTION IF EXISTS check_answer(INTEGER, TEXT, TEXT, INTEGER);
+DROP FUNCTION IF EXISTS check_answer(INTEGER, TEXT, TEXT);
+
+CREATE OR REPLACE FUNCTION public.check_answer(
     p_question_id INTEGER,
     p_answer TEXT,
-    p_subquestion_id INTEGER DEFAULT NULL
-);
-
-CREATE OR REPLACE FUNCTION "public"."check_answer"("p_question_id" integer, "p_answer" "text", "p_type" "text", "p_subquestion_id" integer DEFAULT NULL::integer, "p_is_correct" boolean DEFAULT NULL::boolean) RETURNS boolean
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$
+    p_type TEXT,
+    p_subquestion_id INTEGER DEFAULT NULL,
+    p_is_correct BOOLEAN DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
 DECLARE
-    v_correct_answer TEXT;
     v_is_correct BOOLEAN;
-    v_dragdrop_pair RECORD;
+    v_error_message TEXT;
+    v_question_type_id UUID;
+    v_correct_answer TEXT;
+    v_explanation TEXT;
+    v_feedback TEXT;
 BEGIN
-    CASE p_type
-        WHEN 'question' THEN  -- Standard-Fragetyp
-            SELECT "Richtige Antwort" INTO v_correct_answer
-            FROM questions
-            WHERE id = p_question_id;
-            
-            v_is_correct := LOWER(TRIM(p_answer)) = LOWER(TRIM(v_correct_answer));
-            
-        WHEN 'multiple_choice' THEN
-            SELECT "Richtige Antwort" INTO v_correct_answer
-            FROM questions
-            WHERE id = p_question_id;
-            
-            v_is_correct := LOWER(TRIM(p_answer)) = LOWER(TRIM(v_correct_answer));
-            
-        WHEN 'true_false' THEN
-            SELECT "Richtige Antwort" INTO v_correct_answer
-            FROM questions
-            WHERE id = p_question_id;
-            
-            v_is_correct := (
-                (LOWER(TRIM(p_answer)) = 'true' AND LOWER(TRIM(v_correct_answer)) = 'true') OR
-                (LOWER(TRIM(p_answer)) = 'false' AND LOWER(TRIM(v_correct_answer)) = 'false')
-            );
-            
-        WHEN 'drag_drop' THEN
-            -- Prüfe ob die Paarung existiert und korrekt ist
-            SELECT EXISTS (
-                SELECT 1 
-                FROM dragdrop_pairs
-                WHERE question_id = p_question_id
-                    AND source_text = p_answer
-                    AND target_text = p_subquestion_id::TEXT
-            ) INTO v_is_correct;
-                
-        WHEN 'lueckentext' THEN
-            SELECT "Richtige Antwort" INTO v_correct_answer
-            FROM questions
-            WHERE id = p_question_id;
-            
-            v_is_correct := LOWER(TRIM(p_answer)) = LOWER(TRIM(v_correct_answer));
+    -- Hole Fragentyp
+    SELECT question_type_id INTO v_question_type_id
+    FROM questions
+    WHERE id = p_question_id;
 
-        WHEN 'cases' THEN
+    -- Prüfe Antwort basierend auf Fragentyp
+    CASE p_type
+        WHEN 'multiple_choice' THEN
+            -- Prüfe Multiple-Choice-Antwort
+            SELECT 
+                CASE WHEN mo.is_correct THEN true ELSE false END,
+                mo.explanation,
+                mo.feedback
+            INTO v_is_correct, v_explanation, v_feedback
+            FROM multiple_choice_options mo
+            WHERE mo.question_id = p_question_id 
+            AND mo.option_text = p_answer;
+
+        WHEN 'case' THEN
+            -- Prüfe Fallfrage
             IF p_subquestion_id IS NULL THEN
-                RAISE EXCEPTION 'Für Fallfragen muss eine Unterfrage-ID angegeben werden';
+                RETURN jsonb_build_object(
+                    'error', 'Subquestion ID ist erforderlich für Fallfragen',
+                    'status', 'error'
+                );
             END IF;
-            
-            SELECT correct_answer INTO v_correct_answer
-            FROM cases_subquestions
-            WHERE id = p_subquestion_id;
-            
-            v_is_correct := LOWER(TRIM(p_answer)) = LOWER(TRIM(v_correct_answer));
-            
-        WHEN 'open_question' THEN
-            -- Bei offenen Fragen entscheidet der Nutzer selbst
-            IF p_is_correct IS NULL THEN
-                RAISE EXCEPTION 'Bei offenen Fragen muss p_is_correct angegeben werden';
-            END IF;
-            
-            v_is_correct := p_is_correct;
-            
+
+            SELECT 
+                CASE WHEN cs.correct_answer = p_answer THEN true ELSE false END,
+                cs.explanation,
+                cs.feedback
+            INTO v_is_correct, v_explanation, v_feedback
+            FROM cases_subquestions cs
+            WHERE cs.id = p_subquestion_id;
+
+        WHEN 'dragdrop' THEN
+            -- Prüfe Drag&Drop-Antwort
+            SELECT 
+                CASE WHEN dp.correct_pair = p_answer THEN true ELSE false END,
+                dp.explanation,
+                dp.feedback
+            INTO v_is_correct, v_explanation, v_feedback
+            FROM dragdrop_pairs dp
+            WHERE dp.question_id = p_question_id;
+
+        WHEN 'sequence' THEN
+            -- Prüfe Sequenz-Antwort
+            SELECT 
+                CASE WHEN si.correct_sequence = p_answer THEN true ELSE false END,
+                si.explanation,
+                si.feedback
+            INTO v_is_correct, v_explanation, v_feedback
+            FROM sequence_items si
+            WHERE si.question_id = p_question_id;
+
         ELSE
-            v_is_correct := false;
+            -- Standard Text-Antwort
+            SELECT 
+                CASE WHEN q.correct_answer = p_answer THEN true ELSE false END,
+                q.explanation,
+                q.feedback
+            INTO v_is_correct, v_explanation, v_feedback
+            FROM questions q
+            WHERE q.id = p_question_id;
     END CASE;
-    
-    RETURN v_is_correct;
+
+    -- Wenn keine Antwort gefunden wurde
+    IF v_is_correct IS NULL THEN
+        RETURN jsonb_build_object(
+            'error', 'Keine gültige Antwort gefunden',
+            'status', 'error'
+        );
+    END IF;
+
+    -- Erfolgsmeldung zurückgeben
+    RETURN jsonb_build_object(
+        'status', 'success',
+        'is_correct', v_is_correct,
+        'explanation', v_explanation,
+        'feedback', v_feedback
+    );
+
 EXCEPTION
     WHEN OTHERS THEN
-        RAISE EXCEPTION 'Fehler bei der Antwortprüfung: %', SQLERRM;
+        v_error_message := SQLERRM;
+        RETURN jsonb_build_object(
+            'error', v_error_message,
+            'status', 'error'
+        );
 END;
 $$;

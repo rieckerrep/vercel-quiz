@@ -1,0 +1,288 @@
+/* ProfileScreen.css 
+   
+   Die meisten Styles wurden in den Komponenten durch Tailwind CSS ersetzt.
+   Diese CSS-Datei enthält nur noch grundlegende Anpassungen.
+*/
+
+.profile-screen-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  overflow: hidden;
+  position: relative;
+  min-height: 600px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Anpassungen für mobile Ansicht */
+@media (max-width: 768px) {
+  .profile-screen-container {
+    margin: 0;
+    border-radius: 0;
+  }
+}
+
+/* Top-Bar */
+.profile-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #111;
+  padding: 10px 20px;
+}
+.topbar-logo {
+  width: 80px;
+  height: auto;
+}
+.topbar-title {
+  font-size: 1.8rem;
+  font-weight: bold;
+  margin: 0;
+  color: #fff;
+  text-align: center;
+  flex-grow: 1;
+}
+.topbar-settings-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.topbar-settings-btn img {
+  width: 36px;
+  height: 36px;
+}
+
+/* Trennlinie */
+.topbar-divider {
+  border: 0;
+  border-top: 1px solid #444;
+  margin: 0 0 20px 0;
+}
+
+/* Inhalt */
+.profile-content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header-Row */
+.profile-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+/* Vollkreis-Ring */
+.profile-ring-container {
+  position: relative;
+  width: 200px;
+  height: 200px;
+}
+.profile-ring-svg {
+  width: 200px;
+  height: 200px;
+}
+.profile-avatar-circle {
+  position: absolute;
+  top: 40px;
+  left: 40px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background-position: center;
+  background-size: cover;
+  background-color: transparent;
+  border: 2px solid transparent;
+}
+/* Kleine XP-Anzeige über dem Avatar (optional) */
+.profile-xp-small {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.9rem;
+  color: #fff;
+  background-color: rgba(0, 0, 0, 0.6);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Center-Infos */
+.profile-center-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+.profile-name-medals-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+.profile-username {
+  font-size: 1.4rem;
+  font-weight: bold;
+  margin: 0;
+  color: #fff;
+}
+.profile-medals-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.profile-medal-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.profile-medal-img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+.profile-medal-count {
+  font-size: 1rem;
+  color: #fff;
+}
+.profile-university {
+  font-size: 1rem;
+  color: #ccc;
+  margin: 0;
+}
+.profile-xp,
+.profile-coins {
+  font-size: 1rem;
+  margin: 0;
+}
+.profile-level-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.profile-level-icon {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+}
+.profile-level-name {
+  font-size: 1rem;
+  font-weight: bold;
+  margin: 0;
+  color: #fff;
+}
+
+/* Liga-Icon (rechts) */
+.profile-league-icon {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+}
+
+/* Zurück-Button unten */
+.profile-back-button-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+.profile-back-button {
+  background: green;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 10px 15px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.profile-back-button:hover {
+  background-color: #006600;
+}
+
+/* Overlay => absolute in Container */
+.profile-settings-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.profile-settings-content {
+  background-color: #222;
+  padding: 20px;
+  border: 2px solid #444;
+  border-radius: 8px;
+  width: 400px;
+  max-width: 90%;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  position: relative;
+}
+.close-settings-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #444;
+  color: #fff;
+  border: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.close-settings-btn:hover {
+  background: #666;
+}
+.profile-settings-content h2 {
+  text-align: center;
+  margin: 0;
+  font-size: 1.5rem;
+}
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.settings-field input,
+.settings-field select {
+  padding: 8px;
+  font-size: 1rem;
+  border: 1px solid #666;
+  border-radius: 5px;
+  background-color: #333;
+  color: #fff;
+}
+.settings-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.settings-buttons button {
+  padding: 8px 12px;
+  font-size: 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  background-color: #444;
+  color: #fff;
+}
+.settings-buttons button:hover {
+  background-color: #666;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .profile-header-row {
+    flex-direction: column;
+    align-items: center;
+  }
+  .profile-league-icon {
+    margin-top: 10px;
+  }
+}

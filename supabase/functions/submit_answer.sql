@@ -1,114 +1,93 @@
 -- File: submit_answer.sql
-DROP FUNCTION IF EXISTS submit_answer(
+DROP FUNCTION IF EXISTS public.submit_answer(UUID, INTEGER, TEXT, INTEGER, BOOLEAN);
+DROP FUNCTION IF EXISTS public.submit_answer(UUID, INTEGER, TEXT, INTEGER);
+DROP FUNCTION IF EXISTS public.submit_answer(UUID, INTEGER, TEXT);
+DROP FUNCTION IF EXISTS submit_answer(UUID, INTEGER, TEXT, INTEGER, BOOLEAN);
+DROP FUNCTION IF EXISTS submit_answer(UUID, INTEGER, TEXT, INTEGER);
+DROP FUNCTION IF EXISTS submit_answer(UUID, INTEGER, TEXT);
+
+CREATE OR REPLACE FUNCTION public.submit_answer(
     p_user_id UUID,
     p_question_id INTEGER,
     p_answer TEXT,
     p_subquestion_id INTEGER DEFAULT NULL,
     p_streak_boost_active BOOLEAN DEFAULT false
-);
-
-CREATE OR REPLACE FUNCTION "public"."submit_answer"("p_user_id" "uuid", "p_question_id" integer, "p_answer" "text", "p_subquestion_id" integer DEFAULT NULL::integer, "p_streak_boost_active" boolean DEFAULT false) RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
 DECLARE
-    v_xp_awarded INTEGER := 0;
-    v_coins_awarded INTEGER := 0;
-    v_chapter_id INTEGER;
-    v_current_progress INTEGER;
-    v_new_progress INTEGER;
+    v_is_correct BOOLEAN;
+    v_xp_awarded INTEGER;
+    v_coins_awarded INTEGER;
+    v_new_streak INTEGER;
+    v_error_message TEXT;
+    v_chapter_id UUID;
     v_base_xp INTEGER;
     v_streak_count INTEGER;
-    v_is_correct BOOLEAN;
-    already_answered BOOLEAN;
+    v_new_progress INTEGER;
 BEGIN
-    -- Anti-Farming: Prüfen, ob die Frage schon beantwortet wurde
-    SELECT TRUE INTO already_answered
-    FROM answered_questions
-    WHERE user_id = p_user_id AND question_id = p_question_id;
-
-    IF already_answered THEN
-        RETURN jsonb_build_object('error', '🚫 Diese Frage wurde bereits beantwortet.');
+    -- Prüfe ob die Frage bereits beantwortet wurde
+    IF EXISTS (
+        SELECT 1 FROM answered_questions 
+        WHERE user_id = p_user_id AND question_id = p_question_id
+    ) THEN
+        RETURN jsonb_build_object(
+            'error', 'Frage wurde bereits beantwortet',
+            'status', 'error'
+        );
     END IF;
 
-    -- Prüfe ob die Antwort korrekt ist
-    SELECT check_answer(p_question_id, p_answer, p_subquestion_id) INTO v_is_correct;
-
-    -- Kapitel aus der Frage ermitteln
-    SELECT chapter_id INTO v_chapter_id
-    FROM questions
-    WHERE id = p_question_id;
-
-    -- Basis-XP aus question_type ermitteln
-    SELECT qt.base_xp INTO v_base_xp
+    -- Hole Kapitel-ID und Basis-XP
+    SELECT q.chapter_id, qt.base_xp 
+    INTO v_chapter_id, v_base_xp
     FROM questions q
     JOIN question_types qt ON q.question_type_id = qt.id
     WHERE q.id = p_question_id;
 
-    -- Aktuelle Streak ermitteln
-    SELECT current_streak INTO v_streak_count
-    FROM user_streaks
-    WHERE user_id = p_user_id;
+    -- Prüfe die Antwort
+    SELECT check_answer(p_question_id, p_answer, p_subquestion_id) INTO v_is_correct;
 
-    IF v_is_correct THEN
-        -- XP und Coins für richtige Antwort
-        v_xp_awarded := COALESCE(v_base_xp, 10); -- Fallback auf 10 XP wenn kein base_xp definiert
-        v_coins_awarded := 10;
+    -- Berechne XP und Coins
+    SELECT calculate_and_award_xp(p_user_id, p_question_id, v_is_correct) INTO v_xp_awarded;
+    
+    -- Berechne Coins basierend auf XP
+    v_coins_awarded := v_xp_awarded / 10;
 
-        -- Streak nur behandeln wenn Streak-Boost aktiv ist
-        IF p_streak_boost_active THEN
-            IF v_streak_count >= 2 THEN -- Bei 3. richtiger Antwort in Folge
-                v_xp_awarded := v_xp_awarded + 30; -- Bonus XP
-                -- Streak zurücksetzen
-                UPDATE user_streaks 
-                SET current_streak = 0,
-                    last_updated = NOW()
-                WHERE user_id = p_user_id;
-            ELSE
-                -- Streak erhöhen
-                UPDATE user_streaks 
-                SET current_streak = COALESCE(current_streak, 0) + 1,
-                    last_updated = NOW()
-                WHERE user_id = p_user_id;
-            END IF;
-        END IF;
-    ELSE
-        -- Münzverlust bei falscher Antwort
-        v_coins_awarded := -5;
-        -- Streak zurücksetzen
-        UPDATE user_streaks 
-        SET current_streak = 0,
-            last_updated = NOW()
-        WHERE user_id = p_user_id;
-    END IF;
+    -- Aktualisiere Streak
+    SELECT update_streak(p_user_id, v_is_correct) INTO v_new_streak;
 
-    -- Antwort speichern
+    -- Speichere die Antwort mit allen erforderlichen Feldern
     INSERT INTO answered_questions (
         user_id, 
         question_id, 
         is_correct,
         given_answer,
-        chapter_id, 
+        chapter_id,
+        xp_awarded, 
+        coins_awarded,
         answered_at
     ) VALUES (
         p_user_id, 
         p_question_id, 
         v_is_correct,
         p_answer,
-        v_chapter_id, 
+        v_chapter_id,
+        v_xp_awarded, 
+        v_coins_awarded,
         NOW()
     );
 
-    -- Update der user_stats
+    -- Aktualisiere Statistiken mit allen Feldern
     UPDATE user_stats
-    SET
-        total_xp = COALESCE(total_xp, 0) + v_xp_awarded,
-        total_coins = GREATEST(COALESCE(total_coins, 0) + v_coins_awarded, 0), -- Verhindert negative Coins
-        questions_answered = COALESCE(questions_answered, 0) + 1,
-        correct_answers = COALESCE(correct_answers, 0) + CASE WHEN v_is_correct THEN 1 ELSE 0 END,
+    SET total_xp = total_xp + v_xp_awarded,
+        total_coins = total_coins + v_coins_awarded,
+        correct_answers = correct_answers + CASE WHEN v_is_correct THEN 1 ELSE 0 END,
+        total_answers = total_answers + 1,
         last_played = NOW()
     WHERE user_id = p_user_id;
 
-    -- Fortschritt berechnen
+    -- Berechne neuen Fortschritt
     SELECT 
         ROUND((COUNT(*)::float / (SELECT COUNT(*) FROM questions WHERE chapter_id = v_chapter_id)) * 100)::integer
     INTO v_new_progress
@@ -117,7 +96,7 @@ BEGIN
         AND chapter_id = v_chapter_id 
         AND is_correct = TRUE;
 
-    -- Fortschritt speichern/aktualisieren
+    -- Aktualisiere Quiz-Fortschritt
     INSERT INTO quiz_progress (
         user_id, 
         chapter_id, 
@@ -134,13 +113,13 @@ BEGIN
         progress = v_new_progress, 
         updated_at = NOW();
 
-    -- Daily Streak aktualisieren
+    -- Aktualisiere täglichen Streak
     PERFORM update_daily_streak(p_user_id);
     
-    -- Level-Check
+    -- Prüfe Level-Up
     PERFORM update_level_on_xp_change(p_user_id);
 
-    -- Medaillen prüfen und vergeben wenn Kapitel komplett
+    -- Prüfe auf Kapitelabschluss und vergebe Medaillen
     IF (
         SELECT COUNT(DISTINCT aq.question_id) = (
             SELECT COUNT(*) FROM questions WHERE chapter_id = v_chapter_id
@@ -152,15 +131,22 @@ BEGIN
         PERFORM assign_medals_on_completion(p_user_id, v_chapter_id);
     END IF;
 
+    -- Erfolgsmeldung zurückgeben
     RETURN jsonb_build_object(
+        'status', 'success',
+        'is_correct', v_is_correct,
         'xp_awarded', v_xp_awarded,
         'coins_awarded', v_coins_awarded,
-        'new_progress', v_new_progress,
-        'streak', COALESCE(v_streak_count, 0),
-        'is_correct', v_is_correct
+        'new_streak', v_new_streak,
+        'new_progress', v_new_progress
     );
+
 EXCEPTION
     WHEN OTHERS THEN
-        RETURN jsonb_build_object('error', SQLERRM);
+        v_error_message := SQLERRM;
+        RETURN jsonb_build_object(
+            'error', v_error_message,
+            'status', 'error'
+        );
 END;
 $$;
