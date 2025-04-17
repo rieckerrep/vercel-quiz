@@ -6,7 +6,7 @@ import correctSound from '../../assets/sounds/correct.mp3';
 import wrongSound from '../../assets/sounds/wrong.mp3';
 import { useQuizEventBus } from './quizEventBus';
 import { Answer, SubAnswer } from './types';
-import { Database } from '@/lib/supabase';
+import { Database, AnsweredQuestionsInsert } from '../types/database.types';
 import { useEffect } from 'react';
 import { useSoundStore } from '../../store/useSoundStore';
 import { useUserStore } from '../../store/useUserStore';
@@ -280,21 +280,23 @@ export const useSubmitAnswer = () => {
       chapterId
     }: { 
       userId: string; 
-      questionId: number; 
+      questionId: number;
       selectedOption: string; 
       isCorrect: boolean;
       chapterId: number;
     }) => {
+      const insertData: AnsweredQuestionsInsert = {
+        user_id: userId,
+        question_id: questionId,
+        is_correct: isCorrect,
+        answered_at: new Date().toISOString(),
+        chapter_id: chapterId,
+        selected_option: selectedOption
+      };
+
       const { error } = await supabase
         .from('answered_questions')
-        .insert({
-          user_id: userId,
-          question_id: questionId,
-          selected_option: selectedOption,
-          is_correct: isCorrect,
-          answered_at: new Date().toISOString(),
-          chapter_id: chapterId
-        });
+        .insert(insertData);
 
       if (error) {
         console.error('Fehler beim Speichern der Antwort:', error);

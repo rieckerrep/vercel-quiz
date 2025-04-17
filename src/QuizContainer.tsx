@@ -15,7 +15,7 @@ import { useSoundStore } from "./store/useSoundStore";
 import LueckentextQuestion from "./LueckentextQuestion";
 import { motion, AnimatePresence } from "framer-motion";
 import { Database } from "./lib/supabase";
-import { useUserStore } from "./store/useUserStore";
+import useUserStore from './store/useUserStore'
 import { authService } from "./api/authService";
 import { userService } from "./api/userService";
 import { quizService } from "./api/quizService";
@@ -24,6 +24,7 @@ import { useQuizData } from "./hooks/quiz/useQuizData";
 import { User } from '@supabase/supabase-js';
 import { useQuizRewards } from "./hooks/quiz/useQuizRewards";
 import { SubmitAnswerResult } from './types/supabase';
+import { toast } from 'react-hot-toast';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type UserStats = Database['public']['Tables']['user_stats']['Row'];
@@ -209,7 +210,7 @@ export function QuizContainer({
   // Aktualisiere die Benutzerdaten nur bei wichtigen Änderungen
   useEffect(() => {
     if (userId) {
-      fetchUserStats(userId);
+      fetchUserStats();
     }
   }, [userId, roundXp, roundCoins, fetchUserStats]);
 
@@ -222,7 +223,7 @@ export function QuizContainer({
       // Speichere die Antwort in der Datenbank
       await submitAnswer({
         userId,
-        questionId: currentQuestion.id,
+        questionId: currentQuestion.id.toString(),
         selectedOption: isCorrect ? "true" : "false",
         isCorrect,
         chapterId
@@ -248,7 +249,7 @@ export function QuizContainer({
       // Speichere die Antwort
       await submitAnswer({
         userId,
-        questionId: currentQuestion.id,
+        questionId: currentQuestion.id.toString(),
         selectedOption: isTrue ? "true" : "false",
         isCorrect: isTrue,
         chapterId
@@ -330,7 +331,7 @@ export function QuizContainer({
       // Stats aktualisieren
       await incrementAnsweredQuestions();
       await incrementCorrectAnswers();
-      await fetchUserStats(session.user.id);
+      await fetchUserStats();
 
     } catch (error) {
       console.error('Fehler beim Abschließen der Runde:', error);
@@ -353,7 +354,7 @@ export function QuizContainer({
 
       const { data, error } = await userService.submitAnswer(
         session.user.id,
-        questionId,
+        questionId.toString(),
         isCorrect
       );
 
@@ -369,7 +370,7 @@ export function QuizContainer({
       }
 
       // Stats aktualisieren
-      await fetchUserStats(session.user.id);
+      await fetchUserStats();
     } catch (error) {
       console.error('Fehler beim Einreichen der Antwort:', error);
     }
@@ -384,46 +385,30 @@ export function QuizContainer({
     setIsAnswerSubmitted(true);
 
     try {
-      // Direkte Datenbankabfrage statt RPC
-      const { data, error } = await supabase
-        .from('answered_questions')
-        .insert({
-          user_id: user.id,
-          question_id: currentQuestion.id,
-          is_correct: isCorrect,
-          answered_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+      // Konvertiere numerische ID in einen String
+      const questionId = currentQuestion.id.toString();
 
-      if (error) throw error;
+      // Verwende userService mit streak_boost_active Parameter
+      const { data, error, success } = await userService.submitAnswer(
+        user.id,
+        questionId,
+        isCorrect,
+        streakBoostUsed // Übergebe den Status des Streak-Boost Jokers
+      );
 
-      // Berechne XP und Coins
-      const xp = isCorrect ? 10 : 0;
-      const coins = isCorrect ? 5 : 0;
+      if (!success || error) {
+        throw error || new Error('Fehler beim Speichern der Antwort');
+      }
 
-      // Update user stats
-      const { error: statsError } = await supabase
-        .from('user_stats')
-        .upsert({
-          user_id: user.id,
-          total_xp: xp,
-          total_coins: coins,
-          questions_answered: 1,
-          correct_answers: isCorrect ? 1 : 0,
-          streak: isCorrect ? 1 : 0
-        }, {
-          count: 'exact'
-        });
-
-      if (statsError) throw statsError;
+      if (!data) {
+        throw new Error('Keine Daten von der Datenbank erhalten');
+      }
 
       // Update local state
-      const newProgress = Math.min(progress + (isCorrect ? 10 : 0), 100);
-      setProgress(newProgress);
-      updateStreak(isCorrect);
-      setXpAwarded(xp);
-      setCoinsAwarded(coins);
+      setProgress(data.new_progress);
+      updateStreak(data.streak > 0);
+      setXpAwarded(data.xp_awarded);
+      setCoinsAwarded(data.coins_awarded);
 
       // Play sound and show animation
       if (isCorrect) {
@@ -444,36 +429,10 @@ export function QuizContainer({
       setIsCorrect(isCorrect);
       setShowExplanation(true);
       setLastAnswerCorrect(isCorrect);
-      
-      if (isCorrect) {
-        incrementLocalCorrectAnswers();
-      } else {
-        incrementLocalWrongAnswers();
-      }
-      
-      checkQuizEnd();
+
     } catch (error) {
       console.error('Fehler beim Verarbeiten der Antwort:', error);
-      // Fallback: Lokale Verarbeitung wenn Server nicht erreichbar
-      if (isCorrect) {
-        playCorrectSound();
-        setProgress(Math.min(progress + 10, 100));
-        updateStreak(true);
-        setXpAwarded(10);
-        setCoinsAwarded(5);
-      } else {
-        playWrongSound();
-        hideRewardAnimation();
-        setProgress(0);
-        updateStreak(false);
-        setXpAwarded(0);
-        setCoinsAwarded(0);
-      }
-      setTimeout(() => {
-        setShowRewardAnimation(false);
-        setUserInputAnswer('');
-        setCurrentQuestionIndex(currentQuestionIndex + 1);
-      }, 2000);
+      toast.error('Es gab einen Fehler beim Speichern deiner Antwort. Bitte versuche es erneut.');
     }
   };
 

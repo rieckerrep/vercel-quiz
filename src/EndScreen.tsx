@@ -3,7 +3,8 @@ import { supabase } from "./lib/supabaseClient";
 import { motion } from "framer-motion";
 import { goldMedal, silverMedal, bronzeMedal, scaleIcon } from "./assets/images";
 import "./EndScreen.css";
-import { useUserStore } from "./store/useUserStore";
+import useUserStore from "./store/useUserStore";
+import { authService } from "./api/authService";
 
 export interface EndScreenProps {
   roundXp: number;
@@ -62,23 +63,25 @@ export default function EndScreen({
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [levelData, setLevelData] = useState<LevelData | null>(null);
   const [leagueData, setLeagueData] = useState<LeagueData | null>(null);
-  const userId = useUserStore((state) => state.profile?.id);
+  const user = useUserStore(state => state.user);
 
   const fetchProfile = async () => {
+    if (!user?.id) return;
+    
     try {
-      const { data: profile, error } = await supabase
+      const { data: profileData, error } = await supabase
         .from('profiles')
         .select('username, university, avatar_url')
-        .eq('id', userId ?? '')
+        .eq('id', user.id)
         .single();
 
       if (error) throw error;
 
-      if (profile) {
+      if (profileData) {
         setProfile({
-          username: profile.username || 'Unbekannter Benutzer',
-          university: profile.university,
-          avatar_url: profile.avatar_url
+          username: profileData.username || 'Unbekannter Benutzer',
+          university: profileData.university,
+          avatar_url: profileData.avatar_url
         });
       }
     } catch (error) {
@@ -87,23 +90,25 @@ export default function EndScreen({
   };
 
   const fetchUserStats = async () => {
+    if (!user?.id) return;
+    
     try {
-      const { data: stats, error } = await supabase
+      const { data: statsData, error } = await supabase
         .from('user_stats')
         .select('*')
-        .eq('user_id', userId ?? '')
+        .eq('user_id', user.id)
         .single();
 
       if (error) throw error;
 
-      if (stats) {
+      if (statsData) {
         const newStats = {
-          gold: stats.gold_medals ?? 0,
-          silver: stats.silver_medals ?? 0,
-          bronze: stats.bronze_medals ?? 0,
-          total_xp: stats.total_xp ?? 0,
-          level: stats.level ?? 1,
-          current_league: stats.current_league ?? 'Bronze'
+          gold: statsData.gold_medals ?? 0,
+          silver: statsData.silver_medals ?? 0,
+          bronze: statsData.bronze_medals ?? 0,
+          total_xp: statsData.total_xp ?? 0,
+          level: statsData.level ?? 1,
+          current_league: statsData.current_league ?? 'Bronze'
         };
 
         setUserStats(newStats);
@@ -203,9 +208,11 @@ export default function EndScreen({
 
   // 1) Profil + Stats laden
   useEffect(() => {
-    fetchProfile();
-    fetchUserStats();
-  }, []);
+    if (user?.id) {
+      fetchProfile();
+      fetchUserStats();
+    }
+  }, [user?.id]);
 
   // 2) Level + Liga laden
   useEffect(() => {

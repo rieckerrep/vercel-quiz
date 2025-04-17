@@ -1,9 +1,8 @@
 import { supabase } from '../lib/supabaseClient';
 import { apiCall, ApiResponse } from './apiClient';
-import type { Database } from '../types/supabase';
+import { Database, SubmitAnswerResult, Functions } from '../lib/database.types';
 import { ERROR_MESSAGES } from '../constants/errorMessages';
 import { notificationService } from '../services/notificationService';
-import { SubmitAnswerResult } from '../types/supabase';
 import { RpcFunction, RpcReturnType, RpcArgs } from '../types/rpc';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
@@ -451,15 +450,19 @@ export const userService = {
   submitAnswer: async (
     userId: string,
     questionId: number,
-    isCorrect: boolean
+    isCorrect: boolean,
+    streakBoostActive: boolean = false
   ): Promise<ApiResponse<SubmitAnswerResult>> => {
     try {
-      // @ts-expect-error - Supabase RPC type definitions are incomplete
-      const { data, error } = await supabase.rpc('submit_answer', {
-        p_user_id: userId,
-        p_question_id: questionId,
-        p_is_correct: isCorrect
-      });
+      const { data, error } = await supabase.rpc<SubmitAnswerResult, Functions['submit_answer']['Args']>(
+        'submit_answer',
+        {
+          p_user_id: userId,
+          p_question_id: questionId,
+          p_is_correct: isCorrect,
+          p_streak_boost_active: streakBoostActive
+        }
+      );
 
       if (error) {
         console.error('Fehler beim Einreichen der Antwort:', error);
@@ -470,23 +473,16 @@ export const userService = {
         };
       }
 
-      if (!data || !Array.isArray(data) || data.length === 0) {
-        return { 
-          data: null, 
-          error: new Error('Keine Daten von der Datenbank erhalten'),
-          success: false 
+      if (!data) {
+        return {
+          data: null,
+          error: new Error('Keine Daten erhalten'),
+          success: false
         };
       }
 
-      // Die Backend-Funktion gibt ein Array mit einem Ergebnis zurück
-      const result = data[0] as unknown as SubmitAnswerResult;
       return {
-        data: {
-          xp_awarded: result.xp_awarded,
-          coins_awarded: result.coins_awarded,
-          new_progress: result.new_progress,
-          streak: result.streak
-        },
+        data: data as SubmitAnswerResult,
         error: null,
         success: true
       };

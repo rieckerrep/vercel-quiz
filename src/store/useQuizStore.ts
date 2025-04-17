@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import { Database } from '../lib/supabase'
+import { Database } from '../types/supabase'
 import { supabase } from '../lib/supabaseClient'
-import { useUserStore } from './useUserStore'
+import useUserStore from './useUserStore'
 import correctSound from '../assets/sounds/correct.mp3'
 import wrongSound from '../assets/sounds/wrong.mp3'
 import { useSoundStore } from './useSoundStore'
@@ -208,7 +208,7 @@ interface QuizState {
   handleQuizEvent: (event: QuizEvent) => void;
   
   // Datenbank-Integration
-  fetchUserStats: (userId: string) => Promise<void>;
+  fetchUserStats: () => Promise<void>;
   fetchAnsweredSubQuestions: (userId: string) => Promise<void>;
 
   // Neue Funktionen aus useQuizData
@@ -695,7 +695,7 @@ export const useQuizStore = create<QuizState>((set, get) => {
       const user = await authService.getSession();
       if (user.data?.user) {
         const { fetchUserStats } = useUserStore.getState();
-        await fetchUserStats(user.data.user.id);
+        await fetchUserStats();
       }
     },
 
@@ -798,44 +798,26 @@ export const useQuizStore = create<QuizState>((set, get) => {
           return true;
         }
         
-        // 2) answered_questions-Eintrag erstellen
-        const { error } = await quizService.answerQuestion(
-          user.data.user.id, 
-          questionId, 
-          isCorrect,
-          get().chapterId || 0
-        );
+        // 2) Backend-Funktion aufrufen
+        const { data, error } = await supabase.rpc('calculate_and_award_xp', {
+          p_user_id: user.data.user.id,
+          p_correct_question_ids: isCorrect ? [questionId] : [],
+          p_correct_subquestion_ids: []
+        });
         
         if (error) {
-          console.error("Error awarding question:", error);
+          console.error("Error calculating XP:", error);
           return false;
         }
         
-        // 3) Benutzerstatistiken und Belohnungen aktualisieren
-        const xp = isCorrect ? 10 + (streak * 2) : 0;
+        // 3) Store aktualisieren für die Navigation
+        setAnsweredQuestions([...answeredQuestions, questionId]);
+        
+        // 4) Belohnungen für die Animation setzen
+        const xp = isCorrect ? 10 : 0;
         const coins = isCorrect ? 10 : -5;
         const boostedXp = xpBoostUsed ? xp * 1.5 : xp;
 
-        if (isCorrect) {
-          await Promise.all([
-            userService.incrementCorrectAnswers(user.data.user.id),
-            userService.addXp(user.data.user.id, boostedXp),
-            userService.addCoins(user.data.user.id, coins)
-          ]);
-          // Live-Update der XP und Münzen im UserStore
-          addToTotalXp(boostedXp);
-          addToTotalCoins(coins);
-        } else {
-          await userService.addCoins(user.data.user.id, coins);
-          // Live-Update der Münzen im UserStore
-          addToTotalCoins(coins);
-        }
-        await userService.incrementAnsweredQuestions(user.data.user.id);
-        
-        // 4) Store aktualisieren für die Navigation
-        setAnsweredQuestions([...answeredQuestions, questionId]);
-        
-        // 5) Belohnungen für die Animation setzen
         set({ 
           roundXp: roundXp + boostedXp,
           roundCoins: roundCoins + coins,
@@ -874,49 +856,22 @@ export const useQuizStore = create<QuizState>((set, get) => {
         
         if (alreadyAnswered) {
           console.log("Unterfrage bereits beantwortet");
-          
-          // Keine Belohnungen setzen, wenn die Unterfrage bereits beantwortet wurde
-          set({ rewardXp: 0 });
-          set({ rewardCoins: 0 });
-          
           return true;
         }
         
-        // 2) answered_cases_subquestions-Eintrag erstellen
-        const { error } = await quizService.answerSubquestion(user.data.user.id, subId, isCorrect);
+        // 2) Backend-Funktion aufrufen
+        const { data, error } = await supabase.rpc('calculate_and_award_xp', {
+          p_user_id: user.data.user.id,
+          p_correct_question_ids: [],
+          p_correct_subquestion_ids: isCorrect ? [subId] : []
+        });
         
         if (error) {
-          console.error("Error awarding subquestion:", error);
+          console.error("Error calculating XP:", error);
           return false;
         }
         
-        // 3) Benutzerstatistiken aktualisieren
-        const { addToTotalXp, addToTotalCoins } = useUserStore.getState();
-        
-        if (isCorrect) {
-          await Promise.all([
-            userService.incrementCorrectAnswers(user.data.user.id),
-            userService.addXp(user.data.user.id, 10),
-            userService.addCoins(user.data.user.id, 5)
-          ]);
-          // Live-Update der XP und Münzen im UserStore
-          addToTotalXp(10);
-          addToTotalCoins(5);
-          
-          // Belohnungen für die Animation setzen
-          set({ rewardXp: 10 });
-          set({ rewardCoins: 5 });
-        } else {
-          await userService.addCoins(user.data.user.id, -5);
-          // Live-Update der Münzen im UserStore
-          addToTotalCoins(-5);
-          
-          // Belohnungen für die Animation setzen
-          set({ rewardXp: 0 });
-          set({ rewardCoins: -5 });
-        }
-        
-        // 4) Prüfen, ob alle Unterfragen der Hauptfrage beantwortet wurden
+        // 3) Prüfen, ob alle Unterfragen der Hauptfrage beantwortet wurden
         const { data: allSubQuestions, error: fetchAllSubError } = await quizService.fetchSubquestions(overallQuestionId);
         
         if (fetchAllSubError) {
@@ -933,7 +888,7 @@ export const useQuizStore = create<QuizState>((set, get) => {
           )
         );
         
-        // 5) Store aktualisieren für die Navigation, wenn alle Unterfragen beantwortet wurden
+        // 4) Store aktualisieren für die Navigation, wenn alle Unterfragen beantwortet wurden
         if (allSubQuestionsAnswered) {
           const { answeredQuestions, setAnsweredQuestions } = get();
           if (!answeredQuestions.includes(overallQuestionId)) {
@@ -1281,12 +1236,15 @@ export const useQuizStore = create<QuizState>((set, get) => {
     },
 
     // Datenbank-Integration
-    fetchUserStats: async (userId: string) => {
+    fetchUserStats: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       try {
         const { data, error } = await supabase
           .from('user_stats')
           .select('*')
-          .eq('user_id', userId)
+          .eq('user_id', user.id)
           .single();
 
         if (error) throw error;
@@ -1412,10 +1370,8 @@ export const useQuizStore = create<QuizState>((set, get) => {
       const newTotalCoins = (currentStats?.total_coins || 0) + get().roundCoins;
       const newStreak = get().streak;
       const newCorrectAnswers = (currentStats?.correct_answers || 0) + get().correctAnswers;
-      
-      // Berechne neues Level basierend auf XP
-      const newLevel = Math.floor(newTotalXp / 1000) + 1; // Beispiel: 1000 XP pro Level
 
+      // Aktualisiere die Statistiken
       const { error } = await supabase
         .from('user_stats')
         .update({ 
@@ -1425,12 +1381,22 @@ export const useQuizStore = create<QuizState>((set, get) => {
           total_coins: newTotalCoins,
           streak: newStreak,
           correct_answers: newCorrectAnswers,
-          level: newLevel,
           updated_at: new Date().toISOString()
         })
         .eq('user_id', user.id);
 
       if (error) throw error;
+
+      // Level-Update durchführen
+      const { data: levelData, error: levelError } = await supabase
+        .rpc('update_level_on_xp_change', {
+          p_user_id: user.id,
+          p_new_xp: newTotalXp
+        });
+
+      if (levelError) {
+        console.error('Fehler beim Level-Update:', levelError);
+      }
 
       // Event auslösen
       const eventBus = useQuizEventBus.getState();

@@ -180,6 +180,33 @@ export interface SupabaseDatabase {
           xp_total?: number | null
         }
       }
+      answered_questions: {
+        Row: {
+          id: number;
+          user_id: string;
+          question_id: number;
+          is_correct: boolean;
+          answered_at: string;
+          chapter_id: number;
+          selected_option?: string;
+        };
+        Insert: {
+          user_id: string;
+          question_id: number;
+          is_correct: boolean;
+          answered_at?: string;
+          chapter_id: number;
+          selected_option?: string;
+        };
+        Update: {
+          user_id?: string;
+          question_id?: number;
+          is_correct?: boolean;
+          answered_at?: string;
+          chapter_id?: number;
+          selected_option?: string;
+        };
+      };
     }
     Views: {
       [_ in never]: never
@@ -190,13 +217,14 @@ export interface SupabaseDatabase {
           p_user_id: string;
           p_question_id: number;
           p_is_correct: boolean;
+          p_streak_boost_active?: boolean;
         };
         Returns: {
           xp_awarded: number;
           coins_awarded: number;
           new_progress: number;
           streak: number;
-        }[];
+        };
       }
       get_league_leaderboard: {
         Args: { league_name: string }
@@ -248,4 +276,9 @@ export interface SupabaseDatabase {
       [_ in never]: never
     }
   }
-} 
+}
+
+export type SubmitAnswerResult = SupabaseDatabase['public']['Functions']['submit_answer']['Returns'];
+export type AnsweredQuestionsInsert = SupabaseDatabase['public']['Tables']['answered_questions']['Insert'];
+export type Tables = SupabaseDatabase['public']['Tables'];
+export type Functions = SupabaseDatabase['public']['Functions']; 

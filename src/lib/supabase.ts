@@ -721,6 +721,25 @@ export interface Database {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      calculate_and_award_xp: {
+        Args: {
+          p_user_id: string;
+          p_correct_question_ids: number[];
+          p_correct_subquestion_ids: number[];
+        };
+        Returns: string;
+      }
+      update_level_on_xp_change: {
+        Args: {
+          p_user_id: string;
+          p_new_xp: number;
+        };
+        Returns: {
+          old_level: number;
+          new_level: number;
+          level_up: boolean;
+        };
+      };
     }
     Enums: {
       [_ in never]: never
