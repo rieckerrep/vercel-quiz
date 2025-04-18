@@ -1,4 +1,4 @@
--- File: submit_answer.sql
+-- Lösche alle existierenden Varianten der Funktion
 DROP FUNCTION IF EXISTS public.submit_answer(UUID, INTEGER, TEXT, INTEGER, BOOLEAN);
 DROP FUNCTION IF EXISTS public.submit_answer(UUID, INTEGER, TEXT, INTEGER);
 DROP FUNCTION IF EXISTS public.submit_answer(UUID, INTEGER, TEXT);
@@ -262,4 +262,4 @@ EXCEPTION WHEN OTHERS THEN
         'error', SQLERRM
     );
 END;
-$$;
+$$; 

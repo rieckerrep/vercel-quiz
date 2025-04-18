@@ -1,0 +1,2557 @@
+proname,pg_get_functiondef
+handle_new_user,"CREATE OR REPLACE FUNCTION public.handle_new_user()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+begin
+  insert into public.profiles(id)
+  values (new.id);
+  return new;
+end;
+$function$
+"
+update_level_from_stats(),"CREATE OR REPLACE FUNCTION public.""update_level_from_stats()""()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$BEGIN
+  -- Suche das höchste Level, dessen xp_required <= NEW.total_xp
+  SELECT level_number
+    INTO NEW.level
+    FROM levels
+    WHERE xp_required <= NEW.total_xp
+    ORDER BY xp_required DESC
+    LIMIT 1;
+
+  RETURN NEW;
+END;$function$
+"
+update_league_groups,"CREATE OR REPLACE FUNCTION public.update_league_groups()
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  WITH ranked AS (
+    SELECT 
+      user_id,
+      current_league,  -- z. B. ""Holzliga"", ""Bronzeliga"" etc.
+      ROW_NUMBER() OVER (PARTITION BY current_league ORDER BY total_xp DESC) AS rn
+    FROM user_stats
+  )
+  UPDATE user_stats us
+  SET league_group = CONCAT(us.current_league, ' ', CEIL(r.rn::numeric / 30))
+  FROM ranked r
+  WHERE us.user_id = r.user_id;
+END;
+$function$
+"
+get_player_leaderboard,"CREATE OR REPLACE FUNCTION public.get_player_leaderboard()
+ RETURNS TABLE(username text, xp bigint)
+ LANGUAGE sql
+ SECURITY DEFINER
+AS $function$
+    SELECT p.username,
+           s.total_xp AS xp
+    FROM user_stats s
+    JOIN profiles p ON p.id = s.user_id
+    ORDER BY s.total_xp DESC
+    LIMIT 50
+$function$
+"
+purchase_item,"CREATE OR REPLACE FUNCTION public.purchase_item(user_id uuid, item_id uuid)
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  item_price INTEGER;
+  user_coins INTEGER;
+  current_quantity INTEGER;
+BEGIN
+  -- Preis des Items holen
+  SELECT price INTO item_price FROM items WHERE id = item_id;
+  IF item_price IS NULL THEN
+    RETURN '🚫 Item existiert nicht';
+  END IF;
+
+  -- Coins des Nutzers holen
+  SELECT coins INTO user_coins FROM profiles WHERE id = user_id;
+  IF user_coins IS NULL THEN
+    RETURN '🚫 Nutzer nicht gefunden';
+  END IF;
+
+  -- Prüfen, ob genug Coins vorhanden sind
+  IF user_coins < item_price THEN
+    RETURN '🚫 Nicht genug Coins';
+  END IF;
+
+  -- Coins abziehen
+  UPDATE profiles
+  SET coins = coins - item_price
+  WHERE id = user_id;
+
+  -- Prüfen, ob Item bereits vorhanden ist
+  SELECT quantity INTO current_quantity
+  FROM user_items
+  WHERE user_id = user_id AND item_id = item_id;
+
+  IF FOUND THEN
+    -- Item existiert → Anzahl erhöhen
+    UPDATE user_items
+    SET quantity = quantity + 1
+    WHERE user_id = user_id AND item_id = item_id;
+  ELSE
+    -- Neues Item eintragen
+    INSERT INTO user_items (user_id, item_id, quantity)
+    VALUES (user_id, item_id, 1);
+  END IF;
+
+  RETURN '✅ Item erfolgreich gekauft';
+END;
+$function$
+"
+reset_uni_leaderboard,"CREATE OR REPLACE FUNCTION public.reset_uni_leaderboard()
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  -- Beispiel: Setze das monatliche Score-Feld zurück
+  UPDATE universities
+  SET monthly_uni_scores = 0;
+  
+  RAISE NOTICE 'University leaderboard has been reset.';
+END;
+$function$
+"
+get_user_items,"CREATE OR REPLACE FUNCTION public.get_user_items(p_user_id uuid)
+ RETURNS TABLE(item_id uuid, name text, type text, icon_url text, quantity integer)
+ LANGUAGE sql
+AS $function$
+  SELECT
+    ui.item_id,
+    i.name,
+    i.type,
+    i.icon_url,
+    ui.quantity
+  FROM user_items ui
+  JOIN items i ON ui.item_id = i.id
+  WHERE ui.user_id = p_user_id;
+$function$
+"
+reset_leagues,"CREATE OR REPLACE FUNCTION public.reset_leagues()
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  rec RECORD;
+  promotion_threshold CONSTANT INTEGER := 10;  -- Top 10
+  demotion_threshold CONSTANT INTEGER := 5;    -- Unterste 5
+  next_league TEXT;
+  prev_league TEXT;
+BEGIN
+  -- Für jede existierende Liga in user_stats
+  FOR rec IN
+    SELECT DISTINCT current_league FROM user_stats
+  LOOP
+    -- Bestimme anhand des aktuellen Liga-Namens, welches die nächsthöhere und nächstniedrigere Liga ist.
+    IF rec.current_league = 'Holzliga' THEN
+      next_league := 'Bronzeliga';
+      prev_league := NULL;  -- Keine Abstufung, da Holzliga die unterste ist.
+    ELSIF rec.current_league = 'Bronzeliga' THEN
+      next_league := 'Silberliga';
+      prev_league := 'Holzliga';
+    ELSIF rec.current_league = 'Silberliga' THEN
+      next_league := 'Goldliga';
+      prev_league := 'Bronzeliga';
+    ELSIF rec.current_league = 'Goldliga' THEN
+      next_league := 'Platinliga';
+      prev_league := 'Silberliga';
+    ELSIF rec.current_league = 'Platinliga' THEN
+      next_league := 'Champions League';
+      prev_league := 'Goldliga';
+    ELSE
+      next_league := NULL;
+      prev_league := NULL;
+    END IF;
+
+    -- Befördere die Top 10 (Promotion), sofern es eine nächste Liga gibt:
+    IF next_league IS NOT NULL THEN
+      WITH ranked AS (
+        SELECT user_id, total_xp,
+               ROW_NUMBER() OVER (ORDER BY total_xp DESC) as rn
+        FROM user_stats
+        WHERE current_league = rec.current_league
+      )
+      UPDATE user_stats
+      SET current_league = next_league
+      FROM ranked
+      WHERE user_stats.user_id = ranked.user_id
+        AND ranked.rn <= promotion_threshold;
+    END IF;
+
+    -- Stufe die untersten 5 Spieler ab (Demotion), sofern es eine niedrigere Liga gibt:
+    IF prev_league IS NOT NULL THEN
+      WITH ranked AS (
+        SELECT user_id, total_xp,
+               ROW_NUMBER() OVER (ORDER BY total_xp ASC) as rn
+        FROM user_stats
+        WHERE current_league = rec.current_league
+      )
+      UPDATE user_stats
+      SET current_league = prev_league
+      FROM ranked
+      WHERE user_stats.user_id = ranked.user_id
+        AND ranked.rn <= demotion_threshold;
+    END IF;
+  END LOOP;
+
+  RAISE NOTICE 'Leagues have been reset with promotion/demotion logic applied.';
+END;
+$function$
+"
+start_pvp_match,"CREATE OR REPLACE FUNCTION public.start_pvp_match(user_id uuid, opponent_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  new_match_id UUID;
+BEGIN
+  -- Match anlegen
+  INSERT INTO pvp_matches (status)
+  VALUES ('pending')
+  RETURNING id INTO new_match_id;
+
+  -- Beide Teilnehmer eintragen
+  INSERT INTO match_participants (match_id, user_id)
+  VALUES (new_match_id, user_id),
+         (new_match_id, opponent_id);
+
+  -- Match-ID zurückgeben
+  RETURN new_match_id;
+END;
+$function$
+"
+update_match_score,"CREATE OR REPLACE FUNCTION public.update_match_score(match_id uuid, user_id uuid, is_correct boolean)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  -- Punktestand für den Spieler aktualisieren
+  UPDATE match_participants
+  SET score = score + CASE WHEN is_correct THEN 10 ELSE 0 END
+  WHERE match_id = match_id AND user_id = user_id;
+END;
+$function$
+"
+submit_pvp_answer,"CREATE OR REPLACE FUNCTION public.submit_pvp_answer(user_id uuid, match_id uuid, question_id uuid, is_correct boolean)
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  already_answered INTEGER;
+BEGIN
+  -- Prüfen, ob Frage schon beantwortet wurde (Anti-Farming)
+  SELECT COUNT(*) INTO already_answered
+  FROM pvp_answers
+  WHERE user_id = user_id
+    AND match_id = match_id
+    AND question_id = question_id;
+
+  IF already_answered > 0 THEN
+    RETURN '🚫 Frage bereits beantwortet';
+  END IF;
+
+  -- Antwort eintragen
+  INSERT INTO pvp_answers (user_id, match_id, question_id, is_correct)
+  VALUES (user_id, match_id, question_id, is_correct);
+
+  -- Punkte vergeben bei richtiger Antwort
+  IF is_correct THEN
+    UPDATE match_participants
+    SET score = score + 10
+    WHERE user_id = user_id AND match_id = match_id;
+  END IF;
+
+  RETURN '✅ Antwort gespeichert';
+END;
+$function$
+"
+check_case_answers,"CREATE OR REPLACE FUNCTION public.check_case_answers(p_question_id integer, p_answers jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_result jsonb;
+  v_subquestion record;
+  v_is_correct boolean;
+BEGIN
+  v_result := '[]'::jsonb;
+  
+  FOR v_subquestion IN 
+    SELECT id, correct_answer, statement_text
+    FROM cases_subquestions
+    WHERE question_id = p_question_id
+  LOOP
+    SELECT (jsonb_array_elements(p_answers)->>'answer')::text = v_subquestion.correct_answer
+    INTO v_is_correct
+    WHERE (jsonb_array_elements(p_answers)->>'subquestion_id')::integer = v_subquestion.id;
+    
+    v_result := v_result || jsonb_build_object(
+      'subquestion_id', v_subquestion.id,
+      'statement_text', v_subquestion.statement_text,
+      'is_correct', COALESCE(v_is_correct, false)
+    );
+  END LOOP;
+  
+  RETURN v_result;
+END;
+$function$
+"
+get_user_progress,"CREATE OR REPLACE FUNCTION public.get_user_progress(user_id uuid, chapter_id bigint)
+ RETURNS TABLE(question_id bigint, is_answered boolean, is_correct boolean)
+ LANGUAGE sql
+AS $function$
+  SELECT
+    q.id AS question_id,
+    aq.question_id IS NOT NULL AS is_answered,
+    COALESCE(aq.is_correct, false) AS is_correct
+  FROM questions q
+  LEFT JOIN answered_questions aq
+    ON q.id = aq.question_id AND aq.user_id = get_user_progress.user_id
+  WHERE q.chapter_id = get_user_progress.chapter_id;
+$function$
+"
+is_quiz_completed,"CREATE OR REPLACE FUNCTION public.is_quiz_completed(user_id uuid, chapter_id bigint)
+ RETURNS boolean
+ LANGUAGE sql
+AS $function$
+  SELECT COUNT(DISTINCT aq.question_id) = COUNT(q.id)
+  FROM questions q
+  LEFT JOIN answered_questions aq
+    ON q.id = aq.question_id AND aq.user_id = is_quiz_completed.user_id
+  WHERE q.chapter_id = is_quiz_completed.chapter_id;
+$function$
+"
+has_answered,"CREATE OR REPLACE FUNCTION public.has_answered(user_id uuid, question_id bigint)
+ RETURNS boolean
+ LANGUAGE sql
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM answered_questions
+    WHERE user_id = has_answered.user_id
+      AND question_id = has_answered.question_id
+  );
+$function$
+"
+use_item,"CREATE OR REPLACE FUNCTION public.use_item(user_id uuid, item_id uuid, question_id bigint)
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  remaining INTEGER;
+BEGIN
+  -- Check: hat der User das Item überhaupt?
+  SELECT quantity INTO remaining
+  FROM user_items
+  WHERE user_id = user_id AND item_id = item_id;
+
+  IF remaining IS NULL OR remaining <= 0 THEN
+    RETURN '🚫 Kein Item vorhanden';
+  END IF;
+
+  -- Item verbrauchen
+  UPDATE user_items
+  SET quantity = quantity - 1
+  WHERE user_id = user_id AND item_id = item_id;
+
+  RETURN '✅ Item verwendet';
+END;
+$function$
+"
+check_answer,"CREATE OR REPLACE FUNCTION public.check_answer(p_question_id integer, p_answer text, p_type text, p_subquestion_id integer DEFAULT NULL::integer, p_is_correct boolean DEFAULT NULL::boolean)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_correct_answer TEXT;
+    v_is_correct BOOLEAN;
+    v_dragdrop_pair RECORD;
+BEGIN
+    CASE p_type
+        WHEN 'question' THEN  -- Standard-Fragetyp
+            SELECT ""Richtige Antwort"" INTO v_correct_answer
+            FROM questions
+            WHERE id = p_question_id;
+            
+            v_is_correct := LOWER(TRIM(p_answer)) = LOWER(TRIM(v_correct_answer));
+            
+        WHEN 'multiple_choice' THEN
+            SELECT ""Richtige Antwort"" INTO v_correct_answer
+            FROM questions
+            WHERE id = p_question_id;
+            
+            v_is_correct := LOWER(TRIM(p_answer)) = LOWER(TRIM(v_correct_answer));
+            
+        WHEN 'true_false' THEN
+            SELECT ""Richtige Antwort"" INTO v_correct_answer
+            FROM questions
+            WHERE id = p_question_id;
+            
+            v_is_correct := (
+                (LOWER(TRIM(p_answer)) = 'true' AND LOWER(TRIM(v_correct_answer)) = 'true') OR
+                (LOWER(TRIM(p_answer)) = 'false' AND LOWER(TRIM(v_correct_answer)) = 'false')
+            );
+            
+        WHEN 'drag_drop' THEN
+            -- Prüfe ob die Paarung existiert und korrekt ist
+            SELECT EXISTS (
+                SELECT 1 
+                FROM dragdrop_pairs
+                WHERE question_id = p_question_id
+                    AND source_text = p_answer
+                    AND target_text = p_subquestion_id::TEXT
+            ) INTO v_is_correct;
+                
+        WHEN 'lueckentext' THEN
+            SELECT ""Richtige Antwort"" INTO v_correct_answer
+            FROM questions
+            WHERE id = p_question_id;
+            
+            v_is_correct := LOWER(TRIM(p_answer)) = LOWER(TRIM(v_correct_answer));
+
+        WHEN 'cases' THEN
+            IF p_subquestion_id IS NULL THEN
+                RAISE EXCEPTION 'Für Fallfragen muss eine Unterfrage-ID angegeben werden';
+            END IF;
+            
+            SELECT correct_answer INTO v_correct_answer
+            FROM cases_subquestions
+            WHERE id = p_subquestion_id;
+            
+            v_is_correct := LOWER(TRIM(p_answer)) = LOWER(TRIM(v_correct_answer));
+            
+        WHEN 'open_question' THEN
+            -- Bei offenen Fragen entscheidet der Nutzer selbst
+            IF p_is_correct IS NULL THEN
+                RAISE EXCEPTION 'Bei offenen Fragen muss p_is_correct angegeben werden';
+            END IF;
+            
+            v_is_correct := p_is_correct;
+            
+        ELSE
+            v_is_correct := false;
+    END CASE;
+    
+    RETURN v_is_correct;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE EXCEPTION 'Fehler bei der Antwortprüfung: %', SQLERRM;
+END;
+$function$
+"
+submit_pvp_response,"CREATE OR REPLACE FUNCTION public.submit_pvp_response(user_id uuid, match_id uuid, question_id bigint, is_correct boolean, response_time_ms integer)
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  damage_to_enemy INTEGER := 0;
+  self_penalty INTEGER := 0;
+  opponent_id UUID;
+BEGIN
+  -- Anti-Farming: Frage schon beantwortet?
+  IF EXISTS (
+    SELECT 1 FROM pvp_responses
+    WHERE match_id = match_id AND user_id = user_id AND question_id = question_id
+  ) THEN
+    RETURN '🚫 Frage bereits beantwortet';
+  END IF;
+
+  -- Gegner ermitteln
+  SELECT user_id INTO opponent_id
+  FROM pvp_participants
+  WHERE match_id = match_id AND user_id != user_id;
+
+  -- Schadensberechnung
+  IF is_correct THEN
+    -- Weniger Zeit = mehr Schaden (Basis: 20 - response_time_ms / 1000 capped)
+    damage_to_enemy := GREATEST(10, LEAST(20, 25 - response_time_ms / 1000));
+  ELSE
+    self_penalty := 10;
+  END IF;
+
+  -- Antwort speichern
+  INSERT INTO pvp_responses (match_id, user_id, question_id, is_correct, damage_done, self_damage)
+  VALUES (match_id, user_id, question_id, is_correct, damage_to_enemy, self_penalty);
+
+  -- HP aktualisieren
+  IF is_correct THEN
+    UPDATE pvp_participants
+    SET hp = hp - damage_to_enemy
+    WHERE match_id = match_id AND user_id = opponent_id;
+  ELSE
+    UPDATE pvp_participants
+    SET hp = hp - self_penalty
+    WHERE match_id = match_id AND user_id = user_id;
+  END IF;
+
+  RETURN '✅ Antwort verarbeitet';
+END;
+$function$
+"
+finalize_pvp_match,"CREATE OR REPLACE FUNCTION public.finalize_pvp_match(match_id uuid)
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  p1 UUID;
+  p2 UUID;
+  p1_hp INTEGER;
+  p2_hp INTEGER;
+  winner UUID;
+  loser UUID;
+BEGIN
+  -- Teilnehmer ermitteln
+  SELECT user_id INTO p1 FROM pvp_participants WHERE match_id = match_id LIMIT 1;
+  SELECT user_id INTO p2 FROM pvp_participants WHERE match_id = match_id AND user_id != p1;
+
+  -- HP beider Spieler
+  SELECT hp INTO p1_hp FROM pvp_participants WHERE match_id = match_id AND user_id = p1;
+  SELECT hp INTO p2_hp FROM pvp_participants WHERE match_id = match_id AND user_id = p2;
+
+  -- Prüfen, ob Match schon beendet
+  IF EXISTS (
+    SELECT 1 FROM pvp_matches WHERE id = match_id AND status = 'finished'
+  ) THEN
+    RETURN '🚫 Match wurde bereits abgeschlossen';
+  END IF;
+
+  -- Sieger bestimmen
+  IF p1_hp > p2_hp THEN
+    winner := p1;
+    loser := p2;
+  ELSIF p2_hp > p1_hp THEN
+    winner := p2;
+    loser := p1;
+  ELSE
+    winner := NULL; -- Unentschieden
+  END IF;
+
+  -- Matchstatus aktualisieren
+  UPDATE pvp_matches SET status = 'finished' WHERE id = match_id;
+
+  -- XP/Coins vergeben
+  IF winner IS NOT NULL THEN
+    -- Gewinner
+    UPDATE user_stats SET xp = xp + 50, coins = coins + 50 WHERE user_id = winner;
+    -- Verlierer
+    UPDATE user_stats SET xp = xp + 20, coins = coins + 20 WHERE user_id = loser;
+  ELSE
+    -- Unentschieden
+    UPDATE user_stats SET xp = xp + 30, coins = coins + 30
+    WHERE user_id IN (p1, p2);
+  END IF;
+
+  RETURN '✅ Match abgeschlossen';
+END;
+$function$
+"
+calculate_and_award_xp,"CREATE OR REPLACE FUNCTION public.calculate_and_award_xp(user_id_param uuid, question_ids integer[], subquestion_ids integer[])
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  total_xp INTEGER := 0;
+  question_xp INTEGER;
+  subquestion_xp INTEGER;
+BEGIN
+  -- Berechne XP für korrekte Fragen
+  IF question_ids IS NOT NULL AND array_length(question_ids, 1) > 0 THEN
+    SELECT COALESCE(SUM(xp_value), 0) INTO question_xp
+    FROM questions
+    WHERE id = ANY(question_ids);
+    
+    total_xp := total_xp + question_xp;
+  END IF;
+
+  -- Berechne XP für korrekte Unterfragen
+  IF subquestion_ids IS NOT NULL AND array_length(subquestion_ids, 1) > 0 THEN
+    SELECT COALESCE(SUM(xp_value), 0) INTO subquestion_xp
+    FROM cases_subquestions
+    WHERE id = ANY(subquestion_ids);
+    
+    total_xp := total_xp + subquestion_xp;
+  END IF;
+
+  -- Aktualisiere die XP des Benutzers
+  UPDATE user_stats
+  SET total_xp = total_xp + COALESCE(total_xp, 0)
+  WHERE user_id = user_id_param;
+
+  RETURN total_xp;
+END;
+$function$
+"
+get_user_progress,"CREATE OR REPLACE FUNCTION public.get_user_progress(chapter_id integer, user_id uuid)
+ RETURNS TABLE(question_id integer, is_answered boolean, is_correct boolean)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    q.id as question_id,
+    CASE WHEN aq.id IS NOT NULL THEN true ELSE false END as is_answered,
+    CASE WHEN aq.is_correct IS NOT NULL THEN aq.is_correct ELSE false END as is_correct
+  FROM questions q
+  LEFT JOIN answered_questions aq ON q.id = aq.question_id AND aq.user_id = user_id
+  WHERE q.chapter_id = chapter_id
+  ORDER BY q.id;
+END;
+$function$
+"
+get_university_contributors,"CREATE OR REPLACE FUNCTION public.get_university_contributors(uni_name text)
+ RETURNS TABLE(username text, total_xp bigint, user_id text)
+ LANGUAGE sql
+AS $function$
+    SELECT 
+        COALESCE(p.username, us.username) as username,
+        COALESCE(us.total_xp, 0) as total_xp,
+        p.id as user_id
+    FROM profiles p
+    LEFT JOIN user_stats us ON p.id = us.user_id
+    WHERE p.university = uni_name
+    ORDER BY us.total_xp DESC NULLS LAST;
+$function$
+"
+calculate_and_award_xp,"CREATE OR REPLACE FUNCTION public.calculate_and_award_xp(question_ids integer[], subquestion_ids integer[], user_id_param uuid)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  total_xp INTEGER := 0;
+  question_xp INTEGER;
+  subquestion_xp INTEGER;
+BEGIN
+  -- Berechne XP für korrekte Fragen
+  IF question_ids IS NOT NULL AND array_length(question_ids, 1) > 0 THEN
+    SELECT COALESCE(SUM(xp_value), 0) INTO question_xp
+    FROM questions
+    WHERE id = ANY(question_ids);
+    
+    total_xp := total_xp + question_xp;
+  END IF;
+
+  -- Berechne XP für korrekte Unterfragen
+  IF subquestion_ids IS NOT NULL AND array_length(subquestion_ids, 1) > 0 THEN
+    SELECT COALESCE(SUM(xp_value), 0) INTO subquestion_xp
+    FROM cases_subquestions
+    WHERE id = ANY(subquestion_ids);
+    
+    total_xp := total_xp + subquestion_xp;
+  END IF;
+
+  -- Aktualisiere die XP des Benutzers
+  UPDATE user_stats
+  SET total_xp = total_xp + COALESCE(total_xp, 0)
+  WHERE user_id = user_id_param;
+
+  RETURN total_xp;
+END;
+$function$
+"
+update_subquestions_count,"CREATE OR REPLACE FUNCTION public.update_subquestions_count()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  UPDATE questions
+  SET subquestions_count = (
+    SELECT COUNT(*) FROM cases_subquestions WHERE question_id = NEW.question_id
+  )
+  WHERE id = NEW.question_id;
+  RETURN NEW;
+END;
+$function$
+"
+apply_penalty_for_wrong_answers,"CREATE OR REPLACE FUNCTION public.apply_penalty_for_wrong_answers(p_user_id uuid, p_wrong_question_ids bigint[])
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_new_wrong_ids BIGINT[];
+  v_total_coin_loss INTEGER := 0;
+BEGIN
+  -- Neue, falsche Antworten identifizieren (Anti-Farming)
+  SELECT ARRAY_AGG(q.id)
+  INTO v_new_wrong_ids
+  FROM questions q
+  WHERE q.id = ANY(p_wrong_question_ids)
+    AND NOT EXISTS (
+      SELECT 1 FROM answered_questions aq
+      WHERE aq.user_id = p_user_id AND aq.question_id = q.id
+    );
+
+  -- Gesamtverlust berechnen
+  IF v_new_wrong_ids IS NOT NULL THEN
+    SELECT COALESCE(SUM(qt.base_lose_coins), 0)
+    INTO v_total_coin_loss
+    FROM questions q
+    JOIN question_types qt ON q.question_type_id = qt.id
+    WHERE q.id = ANY(v_new_wrong_ids)
+      AND qt.base_lose_coins > 0;
+
+    -- Als falsch gespeichert
+    INSERT INTO answered_questions (user_id, question_id, is_correct, answered_at)
+    SELECT p_user_id, unnest(v_new_wrong_ids), FALSE, NOW();
+
+    -- Coins abziehen
+    UPDATE user_stats
+    SET total_coins = GREATEST(total_coins - v_total_coin_loss, 0)
+    WHERE user_id = p_user_id;
+  END IF;
+
+  RETURN '🚫 ' || COALESCE(v_total_coin_loss, 0) || ' Coins abgezogen für falsche Antworten.';
+END;
+$function$
+"
+get_league_leaderboard,"CREATE OR REPLACE FUNCTION public.get_league_leaderboard(p_league_name text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_error_message TEXT;
+    v_total_players INTEGER;
+    v_active_players INTEGER;
+    v_league_id INTEGER;
+    v_next_league TEXT;
+    v_prev_league TEXT;
+BEGIN
+    -- Prüfe ob Liga existiert und hole Liga-Informationen
+    SELECT 
+        l.id,
+        l.next_league,
+        l.previous_league
+    INTO 
+        v_league_id,
+        v_next_league,
+        v_prev_league
+    FROM leagues l
+    WHERE l.name = p_league_name;
+
+    IF v_league_id IS NULL THEN
+        RETURN jsonb_build_object(
+            'status', 'error',
+            'message', 'Liga nicht gefunden'
+        );
+    END IF;
+
+    -- Hole Liga-Statistiken
+    SELECT 
+        COUNT(DISTINCT p.id),
+        COUNT(DISTINCT CASE WHEN us.total_xp > 0 THEN p.id END)
+    INTO 
+        v_total_players,
+        v_active_players
+    FROM profiles p
+    LEFT JOIN user_stats us ON us.user_id = p.id
+    WHERE us.current_league = p_league_name;
+
+    -- Rückgabe der Liga-Rangliste
+    RETURN jsonb_build_object(
+        'status', 'success',
+        'league_info', jsonb_build_object(
+            'name', p_league_name,
+            'total_players', v_total_players,
+            'active_players', v_active_players,
+            'next_league', v_next_league,
+            'previous_league', v_prev_league
+        ),
+        'rankings', (
+            WITH ranked_players AS (
+                SELECT 
+                    p.id,
+                    p.username,
+                    p.university,
+                    COALESCE(us.total_xp, 0) as total_xp,
+                    us.level,
+                    COALESCE(us.correct_answers, 0) as correct_answers,
+                    COALESCE(us.total_answers, 0) as total_answers,
+                    lp.updated_at,
+                    ROW_NUMBER() OVER (ORDER BY COALESCE(us.total_xp, 0) DESC) as rank,
+                    -- Berechne XP der letzten 14 Tage
+                    (
+                        SELECT COALESCE(SUM(xp_amount), 0)
+                        FROM xp_history xh
+                        WHERE xh.user_id = p.id
+                        AND xh.created_at >= NOW() - INTERVAL '14 days'
+                    ) as xp_14days,
+                    -- Berechne Rang basierend auf 14-Tage-XP
+                    ROW_NUMBER() OVER (
+                        ORDER BY (
+                            SELECT COALESCE(SUM(xp_amount), 0)
+                            FROM xp_history xh
+                            WHERE xh.user_id = p.id
+                            AND xh.created_at >= NOW() - INTERVAL '14 days'
+                        ) DESC
+                    ) as rank_14days
+                FROM profiles p
+                LEFT JOIN user_stats us ON us.user_id = p.id
+                LEFT JOIN league_positions lp ON lp.user_id = p.id AND lp.league_name = p_league_name
+                WHERE us.current_league = p_league_name
+            )
+            SELECT jsonb_agg(
+                jsonb_build_object(
+                    'rank', rp.rank,
+                    'username', rp.username,
+                    'university', rp.university,
+                    'total_xp', rp.total_xp,
+                    'level', rp.level,
+                    'promotion_status', 
+                        CASE 
+                            WHEN rp.rank_14days <= 5 AND v_next_league IS NOT NULL 
+                            THEN 'promotion'
+                            WHEN rp.rank_14days > (SELECT COUNT(*) FROM ranked_players) - 5 AND v_prev_league IS NOT NULL 
+                            THEN 'demotion'
+                            ELSE 'stable'
+                        END,
+                    'stats', jsonb_build_object(
+                        'correct_answers', rp.correct_answers,
+                        'total_answers', rp.total_answers,
+                        'accuracy_percentage',
+                            CASE 
+                                WHEN rp.total_answers > 0 
+                                THEN ROUND((rp.correct_answers::FLOAT / rp.total_answers) * 100)
+                                ELSE 0
+                            END,
+                        'xp_14days', rp.xp_14days,
+                        'rank_14days', rp.rank_14days
+                    ),
+                    'league_stats', jsonb_build_object(
+                        'time_in_league', 
+                            EXTRACT(DAY FROM NOW() - rp.updated_at),
+                        'previous_leagues', (
+                            SELECT jsonb_agg(DISTINCT previous_league)
+                            FROM league_positions lp2
+                            WHERE lp2.user_id = rp.id
+                            AND lp2.league_name != p_league_name
+                        )
+                    )
+                )
+            )
+            FROM ranked_players rp
+            ORDER BY rp.rank
+        )
+    );
+
+EXCEPTION
+    WHEN OTHERS THEN
+        v_error_message := SQLERRM;
+        RETURN jsonb_build_object(
+            'error', v_error_message,
+            'status', 'error'
+        );
+END;
+$function$
+"
+submit_answer,"CREATE OR REPLACE FUNCTION public.submit_answer(p_user_id uuid, p_question_id integer, p_answer text, p_subquestion_id integer DEFAULT NULL::integer, p_streak_boost_active boolean DEFAULT false)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_is_correct BOOLEAN;
+    v_xp_awarded INTEGER;
+    v_coins_awarded INTEGER;
+    v_new_streak INTEGER;
+    v_error_message TEXT;
+    v_chapter_id UUID;
+    v_base_xp INTEGER;
+    v_streak_count INTEGER;
+    v_new_progress INTEGER;
+BEGIN
+    -- Prüfe ob die Frage bereits beantwortet wurde
+    IF EXISTS (
+        SELECT 1 FROM answered_questions 
+        WHERE user_id = p_user_id AND question_id = p_question_id
+    ) THEN
+        RETURN jsonb_build_object(
+            'error', 'Frage wurde bereits beantwortet',
+            'status', 'error'
+        );
+    END IF;
+
+    -- Hole Kapitel-ID und Basis-XP
+    SELECT q.chapter_id, qt.base_xp 
+    INTO v_chapter_id, v_base_xp
+    FROM questions q
+    JOIN question_types qt ON q.question_type_id = qt.id
+    WHERE q.id = p_question_id;
+
+    -- Prüfe die Antwort
+    SELECT check_answer(p_question_id, p_answer, p_subquestion_id) INTO v_is_correct;
+
+    -- Berechne XP und Coins
+    SELECT calculate_and_award_xp(p_user_id, p_question_id, v_is_correct) INTO v_xp_awarded;
+    
+    -- Berechne Coins basierend auf XP
+    v_coins_awarded := v_xp_awarded / 10;
+
+    -- Aktualisiere Streak
+    SELECT update_streak(p_user_id, v_is_correct) INTO v_new_streak;
+
+    -- Speichere die Antwort mit allen erforderlichen Feldern
+    INSERT INTO answered_questions (
+        user_id, 
+        question_id, 
+        is_correct,
+        given_answer,
+        chapter_id,
+        xp_awarded, 
+        coins_awarded,
+        answered_at
+    ) VALUES (
+        p_user_id, 
+        p_question_id, 
+        v_is_correct,
+        p_answer,
+        v_chapter_id,
+        v_xp_awarded, 
+        v_coins_awarded,
+        NOW()
+    );
+
+    -- Aktualisiere Statistiken mit allen Feldern
+    UPDATE user_stats
+    SET total_xp = total_xp + v_xp_awarded,
+        total_coins = total_coins + v_coins_awarded,
+        correct_answers = correct_answers + CASE WHEN v_is_correct THEN 1 ELSE 0 END,
+        total_answers = total_answers + 1,
+        last_played = NOW()
+    WHERE user_id = p_user_id;
+
+    -- Berechne neuen Fortschritt
+    SELECT 
+        ROUND((COUNT(*)::float / (SELECT COUNT(*) FROM questions WHERE chapter_id = v_chapter_id)) * 100)::integer
+    INTO v_new_progress
+    FROM answered_questions
+    WHERE user_id = p_user_id 
+        AND chapter_id = v_chapter_id 
+        AND is_correct = TRUE;
+
+    -- Aktualisiere Quiz-Fortschritt
+    INSERT INTO quiz_progress (
+        user_id, 
+        chapter_id, 
+        progress, 
+        updated_at
+    ) VALUES (
+        p_user_id, 
+        v_chapter_id, 
+        v_new_progress, 
+        NOW()
+    )
+    ON CONFLICT (user_id, chapter_id)
+    DO UPDATE SET 
+        progress = v_new_progress, 
+        updated_at = NOW();
+
+    -- Aktualisiere täglichen Streak
+    PERFORM update_daily_streak(p_user_id);
+    
+    -- Prüfe Level-Up
+    PERFORM update_level_on_xp_change(p_user_id);
+
+    -- Prüfe auf Kapitelabschluss und vergebe Medaillen
+    IF (
+        SELECT COUNT(DISTINCT aq.question_id) = (
+            SELECT COUNT(*) FROM questions WHERE chapter_id = v_chapter_id
+        )
+        FROM answered_questions aq
+        WHERE aq.user_id = p_user_id 
+            AND aq.chapter_id = v_chapter_id
+    ) THEN
+        PERFORM assign_medals_on_completion(p_user_id, v_chapter_id);
+    END IF;
+
+    -- Erfolgsmeldung zurückgeben
+    RETURN jsonb_build_object(
+        'status', 'success',
+        'is_correct', v_is_correct,
+        'xp_awarded', v_xp_awarded,
+        'coins_awarded', v_coins_awarded,
+        'new_streak', v_new_streak,
+        'new_progress', v_new_progress
+    );
+
+EXCEPTION
+    WHEN OTHERS THEN
+        v_error_message := SQLERRM;
+        RETURN jsonb_build_object(
+            'error', v_error_message,
+            'status', 'error'
+        );
+END;
+$function$
+"
+get_player_leaderboard,"CREATE OR REPLACE FUNCTION public.get_player_leaderboard(p_limit integer DEFAULT 100, p_offset integer DEFAULT 0)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_total_players INTEGER;
+    v_result jsonb;
+BEGIN
+    -- Ermittle Gesamtanzahl der Spieler
+    SELECT COUNT(*) INTO v_total_players
+    FROM user_stats us
+    JOIN profiles p ON p.id = us.user_id
+    WHERE us.last_active >= NOW() - INTERVAL '14 days';
+
+    -- Erstelle Rangliste
+    WITH ranked_players AS (
+        SELECT 
+            us.user_id,
+            p.username,
+            us.total_xp,
+            us.current_league,
+            us.league_xp,
+            ROW_NUMBER() OVER (ORDER BY us.total_xp DESC) as global_rank,
+            ROW_NUMBER() OVER (PARTITION BY us.current_league ORDER BY us.league_xp DESC) as league_rank
+        FROM user_stats us
+        JOIN profiles p ON p.id = us.user_id
+        WHERE us.last_active >= NOW() - INTERVAL '14 days'
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'total_players', v_total_players,
+            'players', COALESCE(
+                (
+                    SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'user_id', user_id,
+                            'username', username,
+                            'total_xp', total_xp,
+                            'current_league', current_league,
+                            'league_xp', league_xp,
+                            'global_rank', global_rank,
+                            'league_rank', league_rank
+                        )
+                        ORDER BY global_rank
+                    )
+                    FROM ranked_players
+                    LIMIT p_limit
+                    OFFSET p_offset
+                ),
+                '[]'::jsonb
+            )
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+get_university_contributors,"CREATE OR REPLACE FUNCTION public.get_university_contributors(p_university_id integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_university_exists BOOLEAN;
+    v_result jsonb;
+BEGIN
+    -- Prüfe ob Universität existiert
+    SELECT EXISTS (
+        SELECT 1 FROM universities WHERE id = p_university_id
+    ) INTO v_university_exists;
+
+    IF NOT v_university_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Universität nicht gefunden',
+            'error', format('Universität mit ID %s existiert nicht', p_university_id)
+        );
+    END IF;
+
+    -- Hole alle Beiträge der Universität
+    WITH university_contributions AS (
+        SELECT 
+            q.id as question_id,
+            q.text as question_text,
+            qt.name as question_type,
+            q.difficulty,
+            qt.base_xp,
+            COUNT(DISTINCT a.user_id) as total_answers,
+            COUNT(DISTINCT a.user_id) FILTER (WHERE a.is_correct) as correct_answers
+        FROM questions q
+        JOIN question_types qt ON q.question_type_id = qt.id
+        LEFT JOIN answers a ON a.question_id = q.id
+        WHERE q.university_id = p_university_id
+        GROUP BY q.id, q.text, qt.name, q.difficulty, qt.base_xp
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'university_info', (
+                SELECT jsonb_build_object(
+                    'id', u.id,
+                    'name', u.name,
+                    'total_questions', COUNT(q.id),
+                    'total_answers', SUM(uc.total_answers),
+                    'correct_answers', SUM(uc.correct_answers)
+                )
+                FROM universities u
+                LEFT JOIN questions q ON q.university_id = u.id
+                LEFT JOIN university_contributions uc ON uc.question_id = q.id
+                WHERE u.id = p_university_id
+                GROUP BY u.id, u.name
+            ),
+            'contributions', COALESCE(
+                (
+                    SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'question_id', question_id,
+                            'question_text', question_text,
+                            'question_type', question_type,
+                            'difficulty', difficulty,
+                            'base_xp', base_xp,
+                            'total_answers', total_answers,
+                            'correct_answers', correct_answers,
+                            'success_rate', CASE 
+                                WHEN total_answers > 0 
+                                THEN ROUND((correct_answers::float / total_answers) * 100, 2)
+                                ELSE 0
+                            END
+                        )
+                        ORDER BY total_answers DESC
+                    )
+                    FROM university_contributions
+                ),
+                '[]'::jsonb
+            )
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+get_university_leaderboard,"CREATE OR REPLACE FUNCTION public.get_university_leaderboard()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_result jsonb;
+BEGIN
+    -- Erstelle Universitäts-Rangliste
+    WITH university_stats AS (
+        SELECT 
+            u.id,
+            u.name,
+            COUNT(DISTINCT q.id) as total_questions,
+            COUNT(DISTINCT a.user_id) as total_answers,
+            COUNT(DISTINCT a.user_id) FILTER (WHERE a.is_correct) as correct_answers,
+            COUNT(DISTINCT us.user_id) as active_students
+        FROM universities u
+        LEFT JOIN questions q ON q.university_id = u.id
+        LEFT JOIN answers a ON a.question_id = q.id
+        LEFT JOIN user_stats us ON us.university_id = u.id
+        WHERE us.last_active >= NOW() - INTERVAL '14 days'
+        GROUP BY u.id, u.name
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'total_universities', COUNT(*),
+            'universities', COALESCE(
+                (
+                    SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'id', id,
+                            'name', name,
+                            'total_questions', total_questions,
+                            'total_answers', total_answers,
+                            'correct_answers', correct_answers,
+                            'active_students', active_students,
+                            'success_rate', CASE 
+                                WHEN total_answers > 0 
+                                THEN ROUND((correct_answers::float / total_answers) * 100, 2)
+                                ELSE 0
+                            END,
+                            'rank', ROW_NUMBER() OVER (
+                                ORDER BY 
+                                    total_questions DESC,
+                                    correct_answers DESC,
+                                    active_students DESC
+                            )
+                        )
+                        ORDER BY 
+                            total_questions DESC,
+                            correct_answers DESC,
+                            active_students DESC
+                    )
+                    FROM university_stats
+                ),
+                '[]'::jsonb
+            )
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+get_streaks,"CREATE OR REPLACE FUNCTION public.get_streaks(p_user_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_user_exists BOOLEAN;
+    v_result jsonb;
+BEGIN
+    -- Prüfe ob Benutzer existiert
+    SELECT EXISTS (
+        SELECT 1 FROM profiles WHERE id = p_user_id
+    ) INTO v_user_exists;
+
+    IF NOT v_user_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Benutzer nicht gefunden',
+            'error', format('Benutzer mit ID %s existiert nicht', p_user_id)
+        );
+    END IF;
+
+    -- Hole alle Streaks des Benutzers
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'quiz_streak', (
+                SELECT jsonb_build_object(
+                    'current_streak', current_streak,
+                    'longest_streak', longest_streak,
+                    'last_activity', last_activity,
+                    'streak_bonus', streak_bonus
+                )
+                FROM user_streaks
+                WHERE user_id = p_user_id
+            ),
+            'daily_streak', (
+                SELECT jsonb_build_object(
+                    'current_streak', current_streak,
+                    'longest_streak', longest_streak,
+                    'last_activity', last_activity,
+                    'streak_bonus', streak_bonus
+                )
+                FROM daily_streaks
+                WHERE user_id = p_user_id
+            ),
+            'streak_history', (
+                SELECT jsonb_agg(
+                    jsonb_build_object(
+                        'date', date,
+                        'quiz_streak', quiz_streak,
+                        'daily_streak', daily_streak,
+                        'total_xp_earned', total_xp_earned
+                    )
+                    ORDER BY date DESC
+                )
+                FROM streak_history
+                WHERE user_id = p_user_id
+            )
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+get_subject_breakdown_for_user,"CREATE OR REPLACE FUNCTION public.get_subject_breakdown_for_user(p_user_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_user_exists BOOLEAN;
+    v_result jsonb;
+BEGIN
+    -- Prüfe ob Benutzer existiert
+    SELECT EXISTS (
+        SELECT 1 FROM profiles WHERE id = p_user_id
+    ) INTO v_user_exists;
+
+    IF NOT v_user_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Benutzer nicht gefunden',
+            'error', format('Benutzer mit ID %s existiert nicht', p_user_id)
+        );
+    END IF;
+
+    -- Hole Fächer-Statistiken des Benutzers
+    WITH subject_stats AS (
+        SELECT 
+            s.id,
+            s.name,
+            COUNT(DISTINCT q.id) as total_questions,
+            COUNT(DISTINCT a.id) as total_answers,
+            COUNT(DISTINCT a.id) FILTER (WHERE a.is_correct) as correct_answers,
+            SUM(qt.base_xp) FILTER (WHERE a.is_correct) as total_xp_earned
+        FROM subjects s
+        LEFT JOIN questions q ON q.subject_id = s.id
+        LEFT JOIN question_types qt ON q.question_type_id = qt.id
+        LEFT JOIN answers a ON a.question_id = q.id AND a.user_id = p_user_id
+        GROUP BY s.id, s.name
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'total_subjects', COUNT(*),
+            'subjects', COALESCE(
+                (
+                    SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'id', id,
+                            'name', name,
+                            'total_questions', total_questions,
+                            'total_answers', total_answers,
+                            'correct_answers', correct_answers,
+                            'total_xp_earned', total_xp_earned,
+                            'success_rate', CASE 
+                                WHEN total_answers > 0 
+                                THEN ROUND((correct_answers::float / total_answers) * 100, 2)
+                                ELSE 0
+                            END,
+                            'completion_rate', CASE 
+                                WHEN total_questions > 0 
+                                THEN ROUND((total_answers::float / total_questions) * 100, 2)
+                                ELSE 0
+                            END
+                        )
+                        ORDER BY total_xp_earned DESC
+                    )
+                    FROM subject_stats
+                ),
+                '[]'::jsonb
+            )
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+get_answer_stats,"CREATE OR REPLACE FUNCTION public.get_answer_stats(p_user_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_user_exists BOOLEAN;
+    v_result jsonb;
+BEGIN
+    -- Prüfe ob Benutzer existiert
+    SELECT EXISTS (
+        SELECT 1 FROM profiles WHERE id = p_user_id
+    ) INTO v_user_exists;
+
+    IF NOT v_user_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Benutzer nicht gefunden',
+            'error', format('Benutzer mit ID %s existiert nicht', p_user_id)
+        );
+    END IF;
+
+    -- Hole Antwort-Statistiken des Benutzers
+    WITH answer_stats AS (
+        SELECT 
+            COUNT(*) as total_answers,
+            COUNT(*) FILTER (WHERE is_correct) as correct_answers,
+            COUNT(DISTINCT question_id) as unique_questions_answered,
+            COUNT(DISTINCT subject_id) as unique_subjects_answered,
+            COUNT(DISTINCT DATE(answered_at)) as days_active,
+            MIN(answered_at) as first_answer_date,
+            MAX(answered_at) as last_answer_date,
+            AVG(CASE WHEN is_correct THEN 1 ELSE 0 END) * 100 as success_rate
+        FROM answers a
+        JOIN questions q ON q.id = a.question_id
+        WHERE a.user_id = p_user_id
+    ),
+    recent_activity AS (
+        SELECT 
+            DATE(answered_at) as date,
+            COUNT(*) as answers,
+            COUNT(*) FILTER (WHERE is_correct) as correct_answers,
+            SUM(qt.base_xp) FILTER (WHERE is_correct) as xp_earned
+        FROM answers a
+        JOIN questions q ON q.id = a.question_id
+        JOIN question_types qt ON q.question_type_id = qt.id
+        WHERE a.user_id = p_user_id
+        AND answered_at >= NOW() - INTERVAL '30 days'
+        GROUP BY DATE(answered_at)
+        ORDER BY date DESC
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'overall_stats', (
+                SELECT jsonb_build_object(
+                    'total_answers', total_answers,
+                    'correct_answers', correct_answers,
+                    'unique_questions_answered', unique_questions_answered,
+                    'unique_subjects_answered', unique_subjects_answered,
+                    'days_active', days_active,
+                    'first_answer_date', first_answer_date,
+                    'last_answer_date', last_answer_date,
+                    'success_rate', ROUND(success_rate, 2)
+                )
+                FROM answer_stats
+            ),
+            'recent_activity', COALESCE(
+                (
+                    SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'date', date,
+                            'answers', answers,
+                            'correct_answers', correct_answers,
+                            'xp_earned', xp_earned,
+                            'success_rate', ROUND((correct_answers::float / answers) * 100, 2)
+                        )
+                    )
+                    FROM recent_activity
+                ),
+                '[]'::jsonb
+            )
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+get_quiz_summary,"CREATE OR REPLACE FUNCTION public.get_quiz_summary(p_user_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_user_exists BOOLEAN;
+    v_result jsonb;
+BEGIN
+    -- Prüfe ob Benutzer existiert
+    SELECT EXISTS (
+        SELECT 1 FROM profiles WHERE id = p_user_id
+    ) INTO v_user_exists;
+
+    IF NOT v_user_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Benutzer nicht gefunden',
+            'error', format('Benutzer mit ID %s existiert nicht', p_user_id)
+        );
+    END IF;
+
+    -- Hole Quiz-Zusammenfassung
+    WITH quiz_sessions AS (
+        SELECT 
+            DATE(started_at) as date,
+            COUNT(*) as total_sessions,
+            COUNT(*) FILTER (WHERE completed_at IS NOT NULL) as completed_sessions,
+            COUNT(*) FILTER (WHERE completed_at IS NULL) as abandoned_sessions,
+            AVG(EXTRACT(EPOCH FROM (completed_at - started_at))) as avg_duration_seconds,
+            SUM(questions_answered) as total_questions,
+            SUM(correct_answers) as total_correct,
+            SUM(xp_earned) as total_xp
+        FROM quiz_sessions
+        WHERE user_id = p_user_id
+        GROUP BY DATE(started_at)
+        ORDER BY date DESC
+        LIMIT 30
+    ),
+    subject_performance AS (
+        SELECT 
+            s.name as subject_name,
+            COUNT(DISTINCT qs.id) as sessions_played,
+            SUM(qs.questions_answered) as questions_answered,
+            SUM(qs.correct_answers) as correct_answers,
+            SUM(qs.xp_earned) as xp_earned
+        FROM quiz_sessions qs
+        JOIN questions q ON q.id = qs.question_id
+        JOIN subjects s ON s.id = q.subject_id
+        WHERE qs.user_id = p_user_id
+        GROUP BY s.name
+        ORDER BY xp_earned DESC
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'recent_sessions', COALESCE(
+                (
+                    SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'date', date,
+                            'total_sessions', total_sessions,
+                            'completed_sessions', completed_sessions,
+                            'abandoned_sessions', abandoned_sessions,
+                            'avg_duration_seconds', ROUND(avg_duration_seconds, 2),
+                            'total_questions', total_questions,
+                            'total_correct', total_correct,
+                            'total_xp', total_xp,
+                            'success_rate', CASE 
+                                WHEN total_questions > 0 
+                                THEN ROUND((total_correct::float / total_questions) * 100, 2)
+                                ELSE 0
+                            END
+                        )
+                    )
+                    FROM quiz_sessions
+                ),
+                '[]'::jsonb
+            ),
+            'subject_performance', COALESCE(
+                (
+                    SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'subject_name', subject_name,
+                            'sessions_played', sessions_played,
+                            'questions_answered', questions_answered,
+                            'correct_answers', correct_answers,
+                            'xp_earned', xp_earned,
+                            'success_rate', CASE 
+                                WHEN questions_answered > 0 
+                                THEN ROUND((correct_answers::float / questions_answered) * 100, 2)
+                                ELSE 0
+                            END
+                        )
+                    )
+                    FROM subject_performance
+                ),
+                '[]'::jsonb
+            )
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+get_user_stats,"CREATE OR REPLACE FUNCTION public.get_user_stats(p_user_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_user_exists BOOLEAN;
+    v_result jsonb;
+BEGIN
+    -- Prüfe ob Benutzer existiert
+    SELECT EXISTS (
+        SELECT 1 FROM profiles WHERE id = p_user_id
+    ) INTO v_user_exists;
+
+    IF NOT v_user_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Benutzer nicht gefunden',
+            'error', format('Benutzer mit ID %s existiert nicht', p_user_id)
+        );
+    END IF;
+
+    -- Hole Benutzer-Statistiken
+    WITH user_stats AS (
+        SELECT 
+            us.total_xp,
+            us.current_level,
+            us.current_league,
+            us.league_xp,
+            us.streak_count,
+            us.last_active,
+            us.university_id,
+            u.name as university_name,
+            COUNT(DISTINCT a.id) as total_answers,
+            COUNT(DISTINCT a.id) FILTER (WHERE a.is_correct) as correct_answers,
+            COUNT(DISTINCT qs.id) as total_sessions,
+            COUNT(DISTINCT qs.id) FILTER (WHERE qs.completed_at IS NOT NULL) as completed_sessions
+        FROM user_stats us
+        LEFT JOIN universities u ON u.id = us.university_id
+        LEFT JOIN answers a ON a.user_id = us.user_id
+        LEFT JOIN quiz_sessions qs ON qs.user_id = us.user_id
+        WHERE us.user_id = p_user_id
+        GROUP BY us.user_id, us.total_xp, us.current_level, us.current_league, 
+                 us.league_xp, us.streak_count, us.last_active, us.university_id, u.name
+    ),
+    level_info AS (
+        SELECT 
+            l.level,
+            l.xp_required,
+            l.xp_required - us.total_xp as xp_to_next_level
+        FROM levels l
+        CROSS JOIN user_stats us
+        WHERE l.level = us.current_level + 1
+        LIMIT 1
+    ),
+    league_info AS (
+        SELECT 
+            l.name,
+            l.next_league,
+            l.previous_league,
+            l.promotion_threshold,
+            l.demotion_threshold,
+            us.league_xp,
+            CASE 
+                WHEN us.league_xp >= l.promotion_threshold THEN 'promotion'
+                WHEN us.league_xp <= l.demotion_threshold THEN 'demotion'
+                ELSE 'stable'
+            END as status
+        FROM leagues l
+        JOIN user_stats us ON us.current_league = l.name
+        WHERE us.user_id = p_user_id
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'user_info', (
+                SELECT jsonb_build_object(
+                    'total_xp', total_xp,
+                    'current_level', current_level,
+                    'current_league', current_league,
+                    'league_xp', league_xp,
+                    'streak_count', streak_count,
+                    'last_active', last_active,
+                    'university', jsonb_build_object(
+                        'id', university_id,
+                        'name', university_name
+                    ),
+                    'total_answers', total_answers,
+                    'correct_answers', correct_answers,
+                    'total_sessions', total_sessions,
+                    'completed_sessions', completed_sessions,
+                    'success_rate', CASE 
+                        WHEN total_answers > 0 
+                        THEN ROUND((correct_answers::float / total_answers) * 100, 2)
+                        ELSE 0
+                    END,
+                    'completion_rate', CASE 
+                        WHEN total_sessions > 0 
+                        THEN ROUND((completed_sessions::float / total_sessions) * 100, 2)
+                        ELSE 0
+                    END
+                )
+                FROM user_stats
+            ),
+            'level_info', (
+                SELECT jsonb_build_object(
+                    'next_level', level,
+                    'xp_required', xp_required,
+                    'xp_to_next_level', xp_to_next_level
+                )
+                FROM level_info
+            ),
+            'league_info', (
+                SELECT jsonb_build_object(
+                    'name', name,
+                    'next_league', next_league,
+                    'previous_league', previous_league,
+                    'promotion_threshold', promotion_threshold,
+                    'demotion_threshold', demotion_threshold,
+                    'current_xp', league_xp,
+                    'status', status
+                )
+                FROM league_info
+            )
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+get_user_progress,"CREATE OR REPLACE FUNCTION public.get_user_progress(p_user_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_user_exists BOOLEAN;
+    v_result jsonb;
+BEGIN
+    -- Prüfe ob Benutzer existiert
+    SELECT EXISTS (
+        SELECT 1 FROM profiles WHERE id = p_user_id
+    ) INTO v_user_exists;
+
+    IF NOT v_user_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Benutzer nicht gefunden',
+            'error', format('Benutzer mit ID %s existiert nicht', p_user_id)
+        );
+    END IF;
+
+    -- Hole Fortschritts-Statistiken
+    WITH subject_progress AS (
+        SELECT 
+            s.id,
+            s.name,
+            COUNT(DISTINCT q.id) as total_questions,
+            COUNT(DISTINCT a.id) as answered_questions,
+            COUNT(DISTINCT a.id) FILTER (WHERE a.is_correct) as correct_answers,
+            SUM(qt.base_xp) FILTER (WHERE a.is_correct) as xp_earned
+        FROM subjects s
+        LEFT JOIN questions q ON q.subject_id = s.id
+        LEFT JOIN question_types qt ON q.question_type_id = qt.id
+        LEFT JOIN answers a ON a.question_id = q.id AND a.user_id = p_user_id
+        GROUP BY s.id, s.name
+    ),
+    daily_progress AS (
+        SELECT 
+            DATE(a.answered_at) as date,
+            COUNT(*) as answers,
+            COUNT(*) FILTER (WHERE a.is_correct) as correct_answers,
+            SUM(qt.base_xp) FILTER (WHERE a.is_correct) as xp_earned
+        FROM answers a
+        JOIN questions q ON q.id = a.question_id
+        JOIN question_types qt ON q.question_type_id = qt.id
+        WHERE a.user_id = p_user_id
+        AND a.answered_at >= NOW() - INTERVAL '30 days'
+        GROUP BY DATE(a.answered_at)
+        ORDER BY date DESC
+    ),
+    level_progress AS (
+        SELECT 
+            l.level,
+            l.xp_required,
+            us.total_xp,
+            CASE 
+                WHEN us.total_xp >= l.xp_required THEN 100
+                ELSE ROUND((us.total_xp::float / l.xp_required) * 100, 2)
+            END as progress_percentage
+        FROM levels l
+        CROSS JOIN user_stats us
+        WHERE us.user_id = p_user_id
+        AND l.level = us.current_level
+        LIMIT 1
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'subjects', COALESCE(
+                (
+                    SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'id', id,
+                            'name', name,
+                            'total_questions', total_questions,
+                            'answered_questions', answered_questions,
+                            'correct_answers', correct_answers,
+                            'xp_earned', xp_earned,
+                            'completion_rate', CASE 
+                                WHEN total_questions > 0 
+                                THEN ROUND((answered_questions::float / total_questions) * 100, 2)
+                                ELSE 0
+                            END,
+                            'success_rate', CASE 
+                                WHEN answered_questions > 0 
+                                THEN ROUND((correct_answers::float / answered_questions) * 100, 2)
+                                ELSE 0
+                            END
+                        )
+                        ORDER BY xp_earned DESC
+                    )
+                    FROM subject_progress
+                ),
+                '[]'::jsonb
+            ),
+            'daily_progress', COALESCE(
+                (
+                    SELECT jsonb_agg(
+                        jsonb_build_object(
+                            'date', date,
+                            'answers', answers,
+                            'correct_answers', correct_answers,
+                            'xp_earned', xp_earned,
+                            'success_rate', ROUND((correct_answers::float / answers) * 100, 2)
+                        )
+                    )
+                    FROM daily_progress
+                ),
+                '[]'::jsonb
+            ),
+            'level_progress', (
+                SELECT jsonb_build_object(
+                    'current_level', level,
+                    'xp_required', xp_required,
+                    'current_xp', total_xp,
+                    'progress_percentage', progress_percentage
+                )
+                FROM level_progress
+            )
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+update_daily_streak,"CREATE OR REPLACE FUNCTION public.update_daily_streak(p_user_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_user_exists BOOLEAN;
+    v_current_streak INTEGER;
+    v_longest_streak INTEGER;
+    v_last_activity TIMESTAMP;
+    v_streak_bonus INTEGER;
+    v_result jsonb;
+BEGIN
+    -- Prüfe ob Benutzer existiert
+    SELECT EXISTS (
+        SELECT 1 FROM profiles WHERE id = p_user_id
+    ) INTO v_user_exists;
+
+    IF NOT v_user_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Benutzer nicht gefunden',
+            'error', format('Benutzer mit ID %s existiert nicht', p_user_id)
+        );
+    END IF;
+
+    -- Hole aktuelle Streak-Daten
+    SELECT 
+        current_streak,
+        longest_streak,
+        last_activity,
+        streak_bonus
+    INTO 
+        v_current_streak,
+        v_longest_streak,
+        v_last_activity,
+        v_streak_bonus
+    FROM daily_streaks
+    WHERE user_id = p_user_id;
+
+    -- Prüfe ob Streak gebrochen wurde
+    IF v_last_activity IS NOT NULL AND DATE(v_last_activity) < CURRENT_DATE - INTERVAL '1 day' THEN
+        v_current_streak := 0;
+    END IF;
+
+    -- Aktualisiere Streak
+    IF v_last_activity IS NULL OR DATE(v_last_activity) < CURRENT_DATE THEN
+        v_current_streak := v_current_streak + 1;
+        v_longest_streak := GREATEST(v_current_streak, v_longest_streak);
+        
+        -- Berechne Streak-Bonus
+        v_streak_bonus := CASE 
+            WHEN v_current_streak >= 7 THEN 50
+            WHEN v_current_streak >= 3 THEN 25
+            ELSE 10
+        END;
+
+        -- Aktualisiere Datenbank
+        INSERT INTO daily_streaks (user_id, current_streak, longest_streak, last_activity, streak_bonus)
+        VALUES (p_user_id, v_current_streak, v_longest_streak, CURRENT_TIMESTAMP, v_streak_bonus)
+        ON CONFLICT (user_id) DO UPDATE SET
+            current_streak = EXCLUDED.current_streak,
+            longest_streak = EXCLUDED.longest_streak,
+            last_activity = EXCLUDED.last_activity,
+            streak_bonus = EXCLUDED.streak_bonus;
+    END IF;
+
+    -- Erstelle Rückgabe-Objekt
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'current_streak', v_current_streak,
+            'longest_streak', v_longest_streak,
+            'last_activity', CURRENT_TIMESTAMP,
+            'streak_bonus', v_streak_bonus
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+update_streak,"CREATE OR REPLACE FUNCTION public.update_streak(p_user_id uuid, p_is_correct boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_user_exists BOOLEAN;
+    v_current_streak INTEGER;
+    v_longest_streak INTEGER;
+    v_last_activity TIMESTAMP;
+    v_streak_bonus INTEGER;
+    v_result jsonb;
+BEGIN
+    -- Prüfe ob Benutzer existiert
+    SELECT EXISTS (
+        SELECT 1 FROM profiles WHERE id = p_user_id
+    ) INTO v_user_exists;
+
+    IF NOT v_user_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Benutzer nicht gefunden',
+            'error', format('Benutzer mit ID %s existiert nicht', p_user_id)
+        );
+    END IF;
+
+    -- Hole aktuelle Streak-Daten
+    SELECT 
+        current_streak,
+        longest_streak,
+        last_activity,
+        streak_bonus
+    INTO 
+        v_current_streak,
+        v_longest_streak,
+        v_last_activity,
+        v_streak_bonus
+    FROM user_streaks
+    WHERE user_id = p_user_id;
+
+    -- Prüfe ob Streak gebrochen wurde
+    IF NOT p_is_correct THEN
+        v_current_streak := 0;
+    ELSE
+        -- Aktualisiere Streak
+        v_current_streak := v_current_streak + 1;
+        v_longest_streak := GREATEST(v_current_streak, v_longest_streak);
+        
+        -- Berechne Streak-Bonus
+        v_streak_bonus := CASE 
+            WHEN v_current_streak >= 10 THEN 100
+            WHEN v_current_streak >= 5 THEN 50
+            WHEN v_current_streak >= 3 THEN 25
+            ELSE 10
+        END;
+    END IF;
+
+    -- Aktualisiere Datenbank
+    INSERT INTO user_streaks (user_id, current_streak, longest_streak, last_activity, streak_bonus)
+    VALUES (p_user_id, v_current_streak, v_longest_streak, CURRENT_TIMESTAMP, v_streak_bonus)
+    ON CONFLICT (user_id) DO UPDATE SET
+        current_streak = EXCLUDED.current_streak,
+        longest_streak = EXCLUDED.longest_streak,
+        last_activity = EXCLUDED.last_activity,
+        streak_bonus = EXCLUDED.streak_bonus;
+
+    -- Erstelle Rückgabe-Objekt
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'current_streak', v_current_streak,
+            'longest_streak', v_longest_streak,
+            'last_activity', CURRENT_TIMESTAMP,
+            'streak_bonus', v_streak_bonus,
+            'is_correct', p_is_correct
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+calculate_and_award_xp,"CREATE OR REPLACE FUNCTION public.calculate_and_award_xp(p_user_id uuid, p_question_id integer, p_is_correct boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_user_exists BOOLEAN;
+    v_question_exists BOOLEAN;
+    v_base_xp INTEGER;
+    v_streak_count INTEGER;
+    v_final_xp INTEGER;
+    v_result jsonb;
+BEGIN
+    -- Prüfe ob Benutzer existiert
+    SELECT EXISTS (
+        SELECT 1 FROM profiles WHERE id = p_user_id
+    ) INTO v_user_exists;
+
+    IF NOT v_user_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Benutzer nicht gefunden',
+            'error', format('Benutzer mit ID %s existiert nicht', p_user_id)
+        );
+    END IF;
+
+    -- Prüfe ob Frage existiert
+    SELECT EXISTS (
+        SELECT 1 FROM questions WHERE id = p_question_id
+    ) INTO v_question_exists;
+
+    IF NOT v_question_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Frage nicht gefunden',
+            'error', format('Frage mit ID %s existiert nicht', p_question_id)
+        );
+    END IF;
+
+    -- Hole Basis-XP und Streak
+    SELECT 
+        qt.base_xp,
+        COALESCE(us.current_streak, 0)
+    INTO 
+        v_base_xp,
+        v_streak_count
+    FROM questions q
+    JOIN question_types qt ON q.question_type_id = qt.id
+    LEFT JOIN user_streaks us ON us.user_id = p_user_id
+    WHERE q.id = p_question_id;
+
+    -- Berechne finale XP
+    IF p_is_correct THEN
+        v_final_xp := v_base_xp * (1 + (v_streak_count * 0.1));
+    ELSE
+        v_final_xp := 0;
+    END IF;
+
+    -- Aktualisiere XP in der Datenbank
+    INSERT INTO user_stats (user_id, total_xp)
+    VALUES (p_user_id, v_final_xp)
+    ON CONFLICT (user_id) DO UPDATE SET
+        total_xp = user_stats.total_xp + v_final_xp;
+
+    -- Erstelle Rückgabe-Objekt
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'base_xp', v_base_xp,
+            'streak_count', v_streak_count,
+            'final_xp', v_final_xp,
+            'is_correct', p_is_correct
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+update_level_on_xp_change,"CREATE OR REPLACE FUNCTION public.update_level_on_xp_change(p_user_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_user_exists BOOLEAN;
+    v_current_xp INTEGER;
+    v_current_level INTEGER;
+    v_new_level INTEGER;
+    v_streak_count INTEGER;
+    v_level_up_bonus INTEGER;
+    v_result jsonb;
+BEGIN
+    -- Prüfe ob Benutzer existiert
+    SELECT EXISTS (
+        SELECT 1 FROM profiles WHERE id = p_user_id
+    ) INTO v_user_exists;
+
+    IF NOT v_user_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Benutzer nicht gefunden',
+            'error', format('Benutzer mit ID %s existiert nicht', p_user_id)
+        );
+    END IF;
+
+    -- Hole aktuelle XP und Level
+    SELECT 
+        us.total_xp,
+        us.current_level,
+        COALESCE(us.current_streak, 0)
+    INTO 
+        v_current_xp,
+        v_current_level,
+        v_streak_count
+    FROM user_stats us
+    WHERE us.user_id = p_user_id;
+
+    -- Bestimme neues Level basierend auf XP
+    SELECT MAX(level)
+    INTO v_new_level
+    FROM levels
+    WHERE xp_required <= v_current_xp;
+
+    -- Berechne Level-Up Bonus basierend auf Streak
+    IF v_new_level > v_current_level THEN
+        v_level_up_bonus := CASE 
+            WHEN v_streak_count >= 10 THEN 200
+            WHEN v_streak_count >= 5 THEN 100
+            WHEN v_streak_count >= 3 THEN 50
+            ELSE 25
+        END;
+    ELSE
+        v_level_up_bonus := 0;
+    END IF;
+
+    -- Aktualisiere Level in der Datenbank
+    IF v_new_level > v_current_level THEN
+        UPDATE user_stats
+        SET 
+            current_level = v_new_level,
+            total_xp = total_xp + v_level_up_bonus
+        WHERE user_id = p_user_id;
+    END IF;
+
+    -- Erstelle Rückgabe-Objekt
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'old_level', v_current_level,
+            'new_level', v_new_level,
+            'current_xp', v_current_xp,
+            'streak_count', v_streak_count,
+            'level_up_bonus', v_level_up_bonus,
+            'level_up_occurred', v_new_level > v_current_level
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+get_question,"CREATE OR REPLACE FUNCTION public.get_question(p_question_id integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_question_exists BOOLEAN;
+    v_question_type TEXT;
+    v_result jsonb;
+    v_answers jsonb;
+BEGIN
+    -- Prüfe ob Frage existiert
+    SELECT EXISTS (
+        SELECT 1 FROM questions WHERE id = p_question_id
+    ), 
+    (SELECT question_type FROM questions WHERE id = p_question_id)
+    INTO v_question_exists, v_question_type;
+
+    IF NOT v_question_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Frage nicht gefunden',
+            'error', format('Frage mit ID %s existiert nicht', p_question_id)
+        );
+    END IF;
+
+    -- Hole Antworten basierend auf dem Fragetyp
+    CASE v_question_type
+        WHEN 'multiple_choice' THEN
+            SELECT jsonb_agg(
+                jsonb_build_object(
+                    'id', mco.id,
+                    'text', mco.option_text,
+                    'is_correct', mco.is_correct
+                )
+                ORDER BY mco.id
+            )
+            FROM multiple_choice_options mco
+            WHERE mco.question_id = p_question_id
+            INTO v_answers;
+
+        WHEN 'drag_drop' THEN
+            SELECT jsonb_agg(
+                jsonb_build_object(
+                    'id', dp.id,
+                    'drag_text', dp.drag_text,
+                    'correct_match', dp.correct_match,
+                    'group_name', dg.group_name
+                )
+                ORDER BY dp.id
+            )
+            FROM dragdrop_pairs dp
+            JOIN dragdrop_groups dg ON dp.group_id = dg.id
+            WHERE dg.question_id = p_question_id
+            INTO v_answers;
+
+        WHEN 'case_question' THEN
+            SELECT jsonb_agg(
+                jsonb_build_object(
+                    'id', cs.id,
+                    'statement_text', cs.statement_text,
+                    'explanation', cs.explanation
+                )
+                ORDER BY cs.id
+            )
+            FROM cases_subquestions cs
+            WHERE cs.question_id = p_question_id
+            INTO v_answers;
+
+        ELSE
+            -- Für einfache Fragen
+            SELECT jsonb_build_array(
+                jsonb_build_object(
+                    'text', q.""Richtige Antwort"",
+                    'is_correct', true
+                )
+            )
+            FROM questions q
+            WHERE q.id = p_question_id
+            INTO v_answers;
+    END CASE;
+
+    -- Hole Frage mit allen Details
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'id', q.id,
+            'text', q.""Frage"",
+            'type', q.question_type,
+            'subject', jsonb_build_object(
+                'id', s.id,
+                'name', s.name
+            ),
+            'question_type', jsonb_build_object(
+                'id', qt.id_uuid,
+                'name', qt.id,
+                'base_xp', qt.base_xp
+            ),
+            'answers', COALESCE(v_answers, '[]'::jsonb),
+            'explanation', q.""Begruendung"",
+            'created_at', q.created_at,
+            'updated_at', q.updated_at
+        )
+    )
+    INTO v_result
+    FROM questions q
+    JOIN subjects s ON q.subject_id = s.id
+    JOIN question_types qt ON q.question_type_id = qt.id_uuid
+    WHERE q.id = p_question_id;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+check_answer,"CREATE OR REPLACE FUNCTION public.check_answer(p_user_id uuid, p_question_id integer, p_answer_text text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_user_exists BOOLEAN;
+    v_question_exists BOOLEAN;
+    v_question_type TEXT;
+    v_is_correct BOOLEAN;
+    v_result jsonb;
+BEGIN
+    -- Prüfe ob Benutzer existiert
+    SELECT EXISTS (
+        SELECT 1 FROM profiles WHERE id = p_user_id
+    ) INTO v_user_exists;
+
+    IF NOT v_user_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Benutzer nicht gefunden',
+            'error', format('Benutzer mit ID %s existiert nicht', p_user_id)
+        );
+    END IF;
+
+    -- Prüfe ob Frage existiert und hole den Typ
+    SELECT EXISTS (
+        SELECT 1 FROM questions WHERE id = p_question_id
+    ), 
+    (SELECT question_type FROM questions WHERE id = p_question_id)
+    INTO v_question_exists, v_question_type;
+
+    IF NOT v_question_exists THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'Frage nicht gefunden',
+            'error', format('Frage mit ID %s existiert nicht', p_question_id)
+        );
+    END IF;
+
+    -- Prüfe Antwort basierend auf dem Fragetyp
+    CASE v_question_type
+        WHEN 'multiple_choice' THEN
+            SELECT EXISTS (
+                SELECT 1 
+                FROM multiple_choice_options 
+                WHERE question_id = p_question_id 
+                AND option_text = p_answer_text
+                AND is_correct = true
+            ) INTO v_is_correct;
+
+        WHEN 'drag_drop' THEN
+            SELECT EXISTS (
+                SELECT 1 
+                FROM dragdrop_pairs dp
+                JOIN dragdrop_groups dg ON dp.group_id = dg.id
+                WHERE dg.question_id = p_question_id 
+                AND dp.drag_text = p_answer_text
+                AND dp.correct_match IS NOT NULL
+            ) INTO v_is_correct;
+
+        WHEN 'case_question' THEN
+            SELECT EXISTS (
+                SELECT 1 
+                FROM cases_subquestions 
+                WHERE question_id = p_question_id 
+                AND correct_answer = p_answer_text
+            ) INTO v_is_correct;
+
+        ELSE
+            -- Für einfache Fragen mit direkter Antwort
+            SELECT ""Richtige Antwort"" = p_answer_text
+            FROM questions 
+            WHERE id = p_question_id
+            INTO v_is_correct;
+    END CASE;
+
+    -- Erstelle Rückgabe-Objekt
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'is_correct', COALESCE(v_is_correct, false),
+            'question_id', p_question_id,
+            'question_type', v_question_type,
+            'given_answer', p_answer_text
+        )
+    ) INTO v_result;
+
+    RETURN v_result;
+
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Ein Fehler ist aufgetreten',
+        'error', SQLERRM
+    );
+END;
+$function$
+"
+assign_medals_on_completion,"CREATE OR REPLACE FUNCTION public.assign_medals_on_completion(p_user_id uuid, p_chapter_id uuid)
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_total_questions INTEGER;
+  v_correct_answers INTEGER;
+  v_percentage NUMERIC;
+  v_medal TEXT;
+BEGIN
+  -- Gesamtzahl der Fragen in Kapitel
+  SELECT COUNT(*) INTO v_total_questions
+  FROM questions
+  WHERE chapter_id = p_chapter_id;
+
+  -- Anzahl richtiger Antworten des Nutzers in diesem Kapitel
+  SELECT COUNT(*) INTO v_correct_answers
+  FROM answered_questions aq
+  JOIN questions q ON aq.question_id = q.id
+  WHERE q.chapter_id = p_chapter_id
+    AND aq.user_id = p_user_id
+    AND aq.is_correct = TRUE;
+
+  IF v_total_questions = 0 THEN
+    RETURN '🚫 Keine Fragen in diesem Kapitel.';
+  END IF;
+
+  v_percentage := (v_correct_answers * 100.0) / v_total_questions;
+
+  -- Medaille bestimmen
+  IF v_percentage >= 100 THEN
+    v_medal := 'gold';
+  ELSIF v_percentage >= 75 THEN
+    v_medal := 'silver';
+  ELSIF v_percentage >= 50 THEN
+    v_medal := 'bronze';
+  ELSE
+    RETURN '❌ Keine Medaille vergeben.';
+  END IF;
+
+  -- Nur eintragen, wenn noch nicht vorhanden oder niedrigerwertig
+  INSERT INTO user_medals (user_id, chapter_id, medal)
+  VALUES (p_user_id, p_chapter_id, v_medal)
+  ON CONFLICT (user_id, chapter_id) DO UPDATE
+  SET medal = CASE
+    WHEN EXCLUDED.medal = 'gold' THEN 'gold'
+    WHEN EXCLUDED.medal = 'silver' AND user_medals.medal = 'bronze' THEN 'silver'
+    WHEN EXCLUDED.medal = 'bronze' AND user_medals.medal IS NULL THEN 'bronze'
+    ELSE user_medals.medal
+  END;
+
+  RETURN '✅ Medaille vergeben: ' || v_medal;
+END;
+$function$
+"
+get_quiz_summary,"CREATE OR REPLACE FUNCTION public.get_quiz_summary(p_user_id uuid, p_chapter_id uuid)
+ RETURNS TABLE(xp_gained integer, xp_possible integer)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_main_xp_gained INTEGER := 0;
+  v_sub_xp_gained INTEGER := 0;
+
+  v_main_xp_possible INTEGER := 0;
+  v_sub_xp_possible INTEGER := 0;
+BEGIN
+  -- XP durch korrekt beantwortete Hauptfragen (inkl. DragDrop, aber nur wenn ganz richtig)
+  SELECT COALESCE(SUM(qt.base_xp), 0)
+  INTO v_main_xp_gained
+  FROM answered_questions aq
+  JOIN questions q ON aq.question_id = q.id
+  JOIN question_types qt ON q.question_type_id = qt.id_uuid
+  WHERE q.chapter_id = p_chapter_id
+    AND aq.user_id = p_user_id
+    AND aq.is_correct = TRUE;
+
+  -- XP durch korrekt beantwortete Subfragen (z. B. Fallfragen)
+  SELECT COUNT(*) * 5
+  INTO v_sub_xp_gained
+  FROM answered_questions aq
+  JOIN cases_subquestions cs ON aq.question_id = cs.id
+  JOIN questions q ON cs.question_id = q.id
+  WHERE q.chapter_id = p_chapter_id
+    AND aq.user_id = p_user_id
+    AND aq.is_correct = TRUE;
+
+  -- Mögliche XP aus Hauptfragen (inkl. DragDrop als ganze Einheit)
+  SELECT COALESCE(SUM(qt.base_xp), 0)
+  INTO v_main_xp_possible
+  FROM questions q
+  JOIN question_types qt ON q.question_type_id = qt.id_uuid
+  WHERE q.chapter_id = p_chapter_id;
+
+  -- Mögliche XP aus Subfragen
+  SELECT COUNT(*) * 5
+  INTO v_sub_xp_possible
+  FROM cases_subquestions cs
+  JOIN questions q ON cs.question_id = q.id
+  WHERE q.chapter_id = p_chapter_id;
+
+  RETURN QUERY SELECT
+    v_main_xp_gained + v_sub_xp_gained AS xp_gained,
+    v_main_xp_possible + v_sub_xp_possible AS xp_possible;
+END;
+$function$
+"
+create_dragdrop_group,"CREATE OR REPLACE FUNCTION public.create_dragdrop_group()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  INSERT INTO dragdrop_groups (question_id) VALUES (NEW.id);
+  RETURN NEW;
+END;
+$function$
+"

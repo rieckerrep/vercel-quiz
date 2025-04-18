@@ -1,6 +1,6 @@
--- File: check_answer.sql
-DROP FUNCTION IF EXISTS public.check_answer(UUID, INTEGER, TEXT);
-DROP FUNCTION IF EXISTS check_answer(UUID, INTEGER, TEXT);
+-- Lösche alle existierenden Varianten der Funktion
+DROP FUNCTION IF EXISTS public.check_answer(UUID, INTEGER, INTEGER);
+DROP FUNCTION IF EXISTS check_answer(UUID, INTEGER, INTEGER);
 
 CREATE OR REPLACE FUNCTION public.check_answer(
     p_user_id UUID,
@@ -102,4 +102,4 @@ EXCEPTION WHEN OTHERS THEN
         'error', SQLERRM
     );
 END;
-$$;
+$$; 

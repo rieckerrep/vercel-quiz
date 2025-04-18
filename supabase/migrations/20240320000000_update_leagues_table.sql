@@ -1,3 +1,8 @@
+-- Füge die neuen Spalten zur leagues-Tabelle hinzu
+ALTER TABLE leagues
+ADD COLUMN IF NOT EXISTS next_league TEXT,
+ADD COLUMN IF NOT EXISTS previous_league TEXT;
+
 -- Entferne die nicht mehr benötigten Spalten aus der leagues-Tabelle
 ALTER TABLE leagues
 DROP COLUMN IF EXISTS promotion_threshold,
