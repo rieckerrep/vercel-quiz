@@ -1,4 +1,6 @@
--- File: finalize_pvp_match.sql
+-- Migration: Standardisierung der finalize_pvp_match Funktion
+-- Beschreibung: Verbesserung der Dokumentation, Formatierung und Fehlerbehandlung
+
 -- Funktion zum Abschließen eines PvP-Matches
 -- Parameter:
 --   match_id: UUID des zu beendenden Matches
@@ -100,4 +102,4 @@ BEGIN
 
     RETURN '✅ Match erfolgreich abgeschlossen';
 END;
-$$;
+$$; 

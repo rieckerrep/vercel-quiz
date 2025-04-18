@@ -1,4 +1,6 @@
--- File: start_pvp_match.sql
+-- Migration: Standardisierung der start_pvp_match Funktion
+-- Beschreibung: Verbesserung der Dokumentation, Formatierung und Fehlerbehandlung
+
 -- Funktion zum Starten eines PvP-Matches
 -- Parameter:
 --   user_id: UUID des anfragenden Spielers
@@ -58,4 +60,4 @@ BEGIN
 
     RETURN new_match_id;
 END;
-$$;
+$$; 

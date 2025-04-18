@@ -1,10 +1,11 @@
--- File: use_item.sql
--- Funktion zum Verwenden eines Items
--- Parameter:
---   user_id: UUID des Benutzers
---   item_id: UUID des Items
---   question_id: ID der Frage, für die das Item verwendet wird
--- Rückgabewert: JSONB mit Status und Details der Item-Verwendung
+-- Migration: Standardisiere use_item Funktion
+-- Datum: 2024-04-19
+-- Beschreibung: 
+--   - Fügt Fehlerbehandlung hinzu
+--   - Verbessert die Dokumentation
+--   - Ändert den Rückgabetyp zu JSONB
+--   - Fügt detailliertere Rückgabewerte hinzu
+--   - Fügt Prüfungen für Benutzer, Item und Frage hinzu
 
 DROP FUNCTION IF EXISTS public.use_item(
     user_id UUID,
@@ -83,4 +84,4 @@ BEGIN
         'remaining_quantity', remaining - 1
     );
 END;
-$$;
+$$; 

@@ -1,4 +1,6 @@
--- File: get_user_items.sql
+-- Migration: Standardisierung der get_user_items Funktion
+-- Beschreibung: Verbesserung der Dokumentation, Formatierung und Fehlerbehandlung
+
 -- Funktion zum Abrufen der Items eines Benutzers
 -- Parameter:
 --   user_id: UUID des Benutzers
@@ -44,4 +46,4 @@ BEGIN
     JOIN items i ON ui.item_id = i.id
     WHERE ui.user_id = get_user_items.user_id;
 END;
-$$;
+$$; 

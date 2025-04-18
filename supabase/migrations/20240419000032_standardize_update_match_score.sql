@@ -1,4 +1,6 @@
--- File: update_match_score.sql
+-- Migration: Standardisierung der update_match_score Funktion
+-- Beschreibung: Verbesserung der Dokumentation, Formatierung und Fehlerbehandlung
+
 -- Funktion zum Aktualisieren des Match-Scores
 -- Parameter:
 --   match_id: UUID des Matches
@@ -53,4 +55,4 @@ BEGIN
     WHERE match_id = match_id 
     AND user_id = user_id;
 END;
-$$;
+$$; 

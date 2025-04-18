@@ -1,7 +1,9 @@
--- File: update_subquestions_count.sql
--- Trigger-Funktion zum Aktualisieren der Anzahl der Unterfragen
--- Wird automatisch ausgeführt, wenn sich Unterfragen ändern
--- Aktualisiert den subquestions_count in der questions Tabelle
+-- Migration: Standardisiere update_subquestions_count Funktion
+-- Datum: 2024-04-19
+-- Beschreibung: 
+--   - Verbessert die Dokumentation
+--   - Fügt Trigger für automatische Ausführung hinzu
+--   - Verbessert die Formatierung und Lesbarkeit
 
 DROP FUNCTION IF EXISTS public.update_subquestions_count() CASCADE;
 
@@ -28,4 +30,4 @@ DROP TRIGGER IF EXISTS update_subquestions_count_trigger ON cases_subquestions;
 CREATE TRIGGER update_subquestions_count_trigger
     AFTER INSERT OR UPDATE OR DELETE ON cases_subquestions
     FOR EACH ROW
-    EXECUTE FUNCTION update_subquestions_count();
+    EXECUTE FUNCTION update_subquestions_count(); 

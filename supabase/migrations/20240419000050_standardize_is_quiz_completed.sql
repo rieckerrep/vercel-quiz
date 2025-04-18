@@ -1,9 +1,6 @@
--- File: is_quiz_completed.sql
--- Funktion zum Prüfen, ob ein Quiz/Kapitel vollständig beantwortet wurde
--- Parameter:
---   user_id: UUID des Benutzers
---   chapter_id: ID des Kapitels
--- Rückgabewert: TRUE wenn alle Fragen des Kapitels beantwortet wurden, sonst FALSE
+-- Standardisiere is_quiz_completed Funktion
+-- Füge Fehlerbehandlung und bessere Dokumentation hinzu
+-- Ändere Parameter-Namen und Typen
 
 DROP FUNCTION IF EXISTS public.is_quiz_completed(
     user_id UUID,
@@ -60,4 +57,4 @@ BEGIN
     -- Quiz ist komplett wenn alle Fragen beantwortet wurden
     RETURN total_questions = answered_questions;
 END;
-$$;
+$$; 

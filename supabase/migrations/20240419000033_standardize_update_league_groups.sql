@@ -1,4 +1,6 @@
--- File: update_league_groups.sql
+-- Migration: Standardisierung der update_league_groups Funktion
+-- Beschreibung: Verbesserung der Dokumentation, Formatierung und Fehlerbehandlung
+
 -- Funktion zum Aktualisieren der Liga-Gruppen
 -- Beschreibung: Teilt Spieler innerhalb ihrer Liga in Gruppen von je 30 Spielern ein,
 --              basierend auf ihren XP-Werten
@@ -35,4 +37,4 @@ BEGIN
     FROM ranked r
     WHERE us.user_id = r.user_id;
 END;
-$$;
+$$; 

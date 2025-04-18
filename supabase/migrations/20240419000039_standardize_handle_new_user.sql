@@ -1,4 +1,6 @@
--- File: handle_new_user.sql
+-- Migration: Standardisierung der handle_new_user Funktion
+-- Beschreibung: Verbesserung der Dokumentation, Formatierung und Fehlerbehandlung
+
 -- Funktion zum Erstellen eines neuen Benutzerprofils
 -- Beschreibung: Trigger-Funktion, die automatisch ein neues Profil erstellt,
 --              wenn ein neuer Benutzer registriert wird
@@ -60,4 +62,4 @@ BEGIN
 
     RETURN NEW;
 END;
-$$;
+$$; 

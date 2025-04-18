@@ -1,4 +1,6 @@
--- File: check_case_answers.sql
+-- Migration: Standardisierung der check_case_answers Funktion
+-- Beschreibung: Verbesserung der Dokumentation, Formatierung und Fehlerbehandlung
+
 -- Funktion zum Überprüfen von Fallfragen-Antworten
 -- Parameter:
 --   question_id: ID der Hauptfrage
@@ -63,4 +65,4 @@ BEGIN
 
     RETURN result;
 END;
-$$;
+$$; 

@@ -1,9 +1,9 @@
--- File: create_dragdrop_group.sql
--- Funktion: create_dragdrop_group
--- Beschreibung: Trigger-Funktion, die automatisch eine neue Drag & Drop Gruppe
---              erstellt, wenn eine neue Drag & Drop Frage angelegt wird
--- Parameter: Trigger-Parameter (NEW enthält die neue Frage)
--- Rückgabewert: Die neue Frage (Trigger-Rückgabewert)
+-- Migration: Standardisiere create_dragdrop_group Funktion
+-- Datum: 2024-04-19
+-- Beschreibung: 
+--   - Korrigiert die Funktion als Trigger
+--   - Verbessert die Dokumentation
+--   - Fügt Trigger-Definition hinzu
 
 DROP FUNCTION IF EXISTS public.create_dragdrop_group() CASCADE;
 
@@ -45,4 +45,4 @@ DROP TRIGGER IF EXISTS create_dragdrop_group_trigger ON questions;
 CREATE TRIGGER create_dragdrop_group_trigger
     AFTER INSERT ON questions
     FOR EACH ROW
-    EXECUTE FUNCTION create_dragdrop_group();
+    EXECUTE FUNCTION create_dragdrop_group(); 

@@ -1,4 +1,6 @@
--- File: reset_uni_leaderboard.sql
+-- Migration: Standardisierung der reset_uni_leaderboard Funktion
+-- Beschreibung: Verbesserung der Dokumentation, Formatierung und Fehlerbehandlung
+
 -- Funktion zum Zurücksetzen des Universitäts-Leaderboards
 -- Beschreibung: Erstellt einen neuen monatlichen Eintrag für jede Universität
 --              und setzt die XP für den neuen Monat auf 0
@@ -45,4 +47,4 @@ BEGIN
         0
     );
 END;
-$$;
+$$; 

@@ -1,4 +1,6 @@
--- File: submit_pvp_response.sql
+-- Migration: Standardisierung der submit_pvp_response Funktion
+-- Beschreibung: Verbesserung der Dokumentation, Formatierung und Fehlerbehandlung
+
 -- Funktion zur Verarbeitung einer PvP-Antwort
 -- Parameter:
 --   user_id: UUID des antwortenden Spielers
@@ -8,7 +10,7 @@
 --   response_time_ms: Antwortzeit in Millisekunden
 -- Rückgabewert: Statusmeldung als Text
 
-DROP FUNCTION IF EXISTS submit_pvp_response(
+DROP FUNCTION IF EXISTS public.submit_pvp_response(
     user_id UUID,
     match_id UUID,
     question_id BIGINT,
@@ -16,7 +18,7 @@ DROP FUNCTION IF EXISTS submit_pvp_response(
     response_time_ms INTEGER
 );
 
-CREATE OR REPLACE FUNCTION submit_pvp_response(
+CREATE OR REPLACE FUNCTION public.submit_pvp_response(
     user_id UUID,
     match_id UUID,
     question_id BIGINT,
@@ -97,4 +99,4 @@ BEGIN
 
     RETURN '✅ Antwort erfolgreich verarbeitet';
 END;
-$$;
+$$; 

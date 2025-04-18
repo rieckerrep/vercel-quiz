@@ -1,4 +1,6 @@
--- File: submit_pvp_answer.sql
+-- Migration: Standardisierung der submit_pvp_answer Funktion
+-- Beschreibung: Verbesserung der Dokumentation, Formatierung und Fehlerbehandlung
+
 -- Funktion zur Verarbeitung einer PvP-Antwort
 -- Parameter:
 --   user_id: UUID des antwortenden Spielers
@@ -71,4 +73,4 @@ BEGIN
 
     RETURN '✅ Antwort erfolgreich verarbeitet';
 END;
-$$;
+$$; 

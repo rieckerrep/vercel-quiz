@@ -1,10 +1,10 @@
--- File: purchase_item.sql
--- Funktion zum Kaufen von Items im Shop
--- Parameter:
---   user_id: UUID des Benutzers
---   item_id: UUID des Items
---   quantity: Anzahl der zu kaufenden Items (Standard: 1)
--- Rückgabewert: JSONB mit Status und Details des Kaufs
+-- Migration: Standardisiere purchase_item Funktion
+-- Datum: 2024-04-19
+-- Beschreibung: 
+--   - Fügt Fehlerbehandlung hinzu
+--   - Verbessert die Dokumentation
+--   - Ändert den Rückgabetyp zu JSONB
+--   - Fügt detailliertere Rückgabewerte hinzu
 
 DROP FUNCTION IF EXISTS public.purchase_item(
     user_id UUID,
@@ -101,4 +101,4 @@ BEGIN
         'remaining_coins', user_coins - total_price
     );
 END;
-$$;
+$$; 

@@ -1,4 +1,6 @@
--- File: reset_leagues.sql
+-- Migration: Standardisierung der reset_leagues Funktion
+-- Beschreibung: Verbesserung der Dokumentation, Formatierung und Fehlerbehandlung
+
 -- Funktion zum Zurücksetzen und Neuberechnen der Ligen
 -- Beschreibung: Befördert die Top 10 Spieler jeder Liga in die nächsthöhere
 --              und stuft die untersten 5 Spieler in die niedrigere Liga ab
@@ -89,4 +91,4 @@ BEGIN
     -- Aktualisiere die Liga-Gruppen
     PERFORM update_league_groups();
 END;
-$$;
+$$; 

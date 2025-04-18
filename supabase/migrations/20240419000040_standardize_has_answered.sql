@@ -1,4 +1,6 @@
--- File: has_answered.sql
+-- Migration: Standardisierung der has_answered Funktion
+-- Beschreibung: Verbesserung der Dokumentation, Formatierung und Fehlerbehandlung
+
 -- Funktion zum Prüfen, ob ein Benutzer eine Frage bereits beantwortet hat
 -- Parameter:
 --   user_id: UUID des Benutzers
@@ -48,4 +50,4 @@ BEGIN
         AND question_id = has_answered.question_id
     );
 END;
-$$;
+$$; 
