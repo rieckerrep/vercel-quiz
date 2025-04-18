@@ -1,86 +1,32 @@
 -- File: use_item.sql
--- Funktion zum Verwenden eines Items
--- Parameter:
---   user_id: UUID des Benutzers
---   item_id: UUID des Items
---   question_id: ID der Frage, für die das Item verwendet wird
--- Rückgabewert: JSONB mit Status und Details der Item-Verwendung
-
-DROP FUNCTION IF EXISTS public.use_item(
-    user_id UUID,
-    item_id UUID,
-    question_id BIGINT
-);
-
-CREATE OR REPLACE FUNCTION public.use_item(
-    user_id UUID,
-    item_id UUID,
-    question_id BIGINT
-) RETURNS JSONB
-LANGUAGE plpgsql
-AS $$
+CREATE OR REPLACE FUNCTION "public"."use_item"("p_user_id" "uuid", "p_item_id" "uuid", "p_metadata" "jsonb" DEFAULT '{}'::"jsonb") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
 DECLARE
-    remaining INTEGER;
-    user_exists BOOLEAN;
-    item_exists BOOLEAN;
-    question_exists BOOLEAN;
+  v_quantity integer;
+  v_now      timestamp := now();
+  v_response jsonb;
 BEGIN
-    -- Prüfe ob Benutzer existiert
-    SELECT EXISTS (
-        SELECT 1 FROM profiles 
-        WHERE id = user_id
-    ) INTO user_exists;
-    
-    IF NOT user_exists THEN
-        RETURN jsonb_build_object('status', 'error', 'message', '❌ Benutzer nicht gefunden');
-    END IF;
+  -- 1) Prüfen, ob Item aktiv und vorhanden ist
+  SELECT quantity INTO v_quantity
+  FROM public.user_items
+  WHERE user_id = p_user_id AND item_id = p_item_id AND is_active = true;
 
-    -- Prüfe ob Item existiert
-    SELECT EXISTS (
-        SELECT 1 FROM items 
-        WHERE id = item_id
-    ) INTO item_exists;
-    
-    IF NOT item_exists THEN
-        RETURN jsonb_build_object('status', 'error', 'message', '❌ Item existiert nicht');
-    END IF;
+  IF v_quantity IS NULL OR v_quantity < 1 THEN
+    RETURN jsonb_build_object('error','Item nicht verfügbar');
+  END IF;
 
-    -- Prüfe ob Frage existiert
-    SELECT EXISTS (
-        SELECT 1 FROM questions 
-        WHERE id = question_id
-    ) INTO question_exists;
-    
-    IF NOT question_exists THEN
-        RETURN jsonb_build_object('status', 'error', 'message', '❌ Frage nicht gefunden');
-    END IF;
+  -- 2) Quantity verringern und ggf. deaktivieren
+  UPDATE public.user_items
+  SET quantity = quantity - 1,
+      is_active = (quantity - 1 > 0)
+  WHERE user_id = p_user_id AND item_id = p_item_id;
 
-    -- Prüfe ob Item vorhanden ist
-    SELECT quantity INTO remaining
-    FROM user_items
-    WHERE user_id = use_item.user_id 
-    AND item_id = use_item.item_id;
+  -- 3) Loggen
+  INSERT INTO public.item_usage_log(user_id,item_id,used_at,metadata)
+  VALUES(p_user_id,p_item_id,v_now,p_metadata);
 
-    IF remaining IS NULL OR remaining <= 0 THEN
-        RETURN jsonb_build_object(
-            'status', 'error',
-            'message', '❌ Kein Item vorhanden',
-            'item_id', item_id
-        );
-    END IF;
-
-    -- Item verbrauchen
-    UPDATE user_items
-    SET quantity = quantity - 1
-    WHERE user_id = use_item.user_id 
-    AND item_id = use_item.item_id;
-
-    RETURN jsonb_build_object(
-        'status', 'success',
-        'message', '✅ Item erfolgreich verwendet',
-        'item_id', item_id,
-        'question_id', question_id,
-        'remaining_quantity', remaining - 1
-    );
+  v_response := jsonb_build_object('status','used');
+  RETURN v_response;
 END;
 $$;

@@ -1,11 +1,17 @@
 ---
 description: 
 globs: 
+alwaysApply: false
+---
+---
+description: 
+globs: 
 alwaysApply: true
 ---
 -- .mdc: Ziel = Supabase RPC-Funktion vollständig und produktionsbereit erstellen
 -- Vorgaben für Cursor:
 -- 1. Die folgende PL/pgSQL-Funktion soll vollständig implementiert werden – **keine Platzhalter**, kein "Rest der Funktion"!
+Checke unbedingt die korrekte Tabellen- und Spaltenbezeichnung in [schema_.sql](mdc:supabase/sql-base/schema_.sql)
 -- 2. Der Code soll produktionsbereit sein und direkt via `supabase db push` in Supabase funktionieren.
 -- 3. Verwende `DROP FUNCTION IF EXISTS ...` mit exakter Signatur vor der Funktion, um doppelte Einträge zu vermeiden.
 -- 4. Ersetze oder erweitere die Funktion **immer vollständig** – keine "todo" oder ausgelassenen Blöcke.
@@ -13,6 +19,28 @@ alwaysApply: true
 -- 6. Verwende ausschließlich reale Tabellen und Spalten aus dem aktuellen Supabase-Schema (kein Beispielcode).
 -- 7. Die Funktion muss ausführbar, testbar und logisch abgeschlossen sein – keine Lücken.
 -- 8. Ziel: Diese Datei soll beim Speichern direkt einsatzbereit sein, ohne dass manuell ergänzt werden muss.
+-- 9. Der Workflow ist folgender: Der Ordner "Functions" soll dem entsprechen, was auch in der Datenbank ist
+-- 10. Die Übertragung geht im Ordner Migrations.
+11. Wenn ich dich frage, ob wir eine Tabelle oder Spalte brauchen, weil sie nicht vorhanden ist, frage ich dich immer ob sie notwendig ist und in das Quizsystem passt.
+
+Der Workflow für Standartisierungen im Kurzen ist also folgender (je nachdem was gerade gefragt ist):
+I. Überprüfe immer wie die Tabellen- und Spaltenstruktur aussieht. Die Funktion muss immer der aktuellen Struktur entsprechen. Wenn sie dem nicht entspricht, dann musst du explizit sagen, dass du eine neue Tabelle hinzufügen oder ändern willst. Überprüfe jedoch vorher, ob die Funktion, die du suchst nicht bereits durch eine andere Tabelle abgedeckt ist. Das ergibt sich aus [schema_.sql](mdc:supabase/sql-base/schema_.sql)
+II. Funktion standartisieren 
+III. Migration erstellen - bedenke dabei das es die alte Funktion immer mit DROP FUNCTION IF EXISTS entfernt werden soll. Es darf keine doppelten Funktionen geben.
+IV. DB Subapase Push, wenn ich das sage - wenn wir mehrere Funktionen im Flöw ändern, dann pushen wir alle gemeinsam.
+
+Checke:
+✅ Schema-Referenz (public.) bei DROP FUNCTION
+✅ Schema-Referenz (public.) bei CREATE FUNCTION
+✅ Vollständige Parameter-Liste
+✅ Korrekte Tabellenstruktur
+
+Der Workflow für Anpassungen oder Änderungen im Kurzen ist also folgender (je nachdem was gerade gefragt ist):
+I. Überprüfe immer wie die Tabellen- und Spaltenstruktur aussieht. Die Funktion muss immer der aktuellen Struktur entsprechen. Wenn sie dem nicht entspricht, dann musst du explizit sagen, dass du eine neue Tabelle hinzufügen oder ändern willst. Überprüfe jedoch vorher, ob die Funktion, die du suchst nicht bereits durch eine andere Tabelle abgedeckt ist. Die Tabellenstruktur ergibt sich aus [schema_.sql](mdc:supabase/sql-base/schema_.sql)
+II. Funktion ändern
+III. Entsprechende Stellen im Frontend-Code anpassen, FALLS DAS NOTWENDIG IST! 
+IV. Migration erstellen.
+V. DB Subapase Push, wenn ich das sage.
 
 -- 💡 Hinweis: Nach Speichern wird diese Datei mit `supabase db push` deployed – stelle sicher, dass keine SQL-Fehler vorhanden sind.
 

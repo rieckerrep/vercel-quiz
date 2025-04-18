@@ -1,0 +1,68 @@
+Singleplayer:
+
+update_daily_streak(user_id) – prüft, ob Nutzer heute aktiv war, aktualisiert Streak.
+
+get_streak_status(user_id) – gibt aktuellen Streak-Status zurück.
+
+get_incorrect_questions(user_id) – liefert falsch beantwortete Fragen.
+
+get_level(user_id) – berechnet Level aus XP.
+
+level_up_if_eligible(user_id) – prüft, ob neuer Level erreicht wurde.
+
+get_user_profile(user_id) – holt alle Profildaten (Coins, XP, Medaillen, Items, Level, Streak).
+
+update_avatar(user_id, avatar_url) – Avatarwechsel oder Profilbild.
+
+report_question(user_id, question_id, reason) – Feedback-Funktion aus dem Quiz heraus.
+
+get_reported_questions() – Adminfunktion zur Übersicht.
+
+get_leaderboard(limit, chapter_id)
+
+get_university_ranking(university_id)
+
+Admin:
+insert_question(...) – neue Frage hinzufügen
+
+update_question(question_id, ...) – bestehende Frage bearbeiten
+
+delete_question(question_id) – Frage löschen (z. B. bei Fehlern)
+
+get_reported_questions() – Liste gemeldeter Fragen (z. B. bei inhaltlichen Fehlern)
+
+resolve_report(report_id) – markiert ein Problem als gelöst
+
+delete_report(report_id) – entfernt Spam oder doppelte Meldungen
+
+get_active_users(since) – z. B. alle, die im letzten Monat aktiv waren
+
+get_user_activity(user_id) – Lernzeit, beantwortete Fragen etc.
+
+📈 System-Überblick
+get_system_stats() – z. B. Gesamtanzahl an Fragen, Nutzern, Medaillen, Items, XP
+
+get_chapter_engagement(chapter_id) – Wie oft wurde ein Kapitel gespielt?
+
+ban_user(user_id) – sperrt User bei Missbrauch
+
+unban_user(user_id) – Aufhebung der Sperrung
+
+update_user_role(user_id, role) – z. B. Umwandlung zu Moderator, Tutor etc.
+
+📬 Nachrichten / Admin-Kommunikation
+send_announcement(title, message) – sendet Nachricht an alle User (z. B. neue Kurse)
+
+send_user_message(user_id, message) – private Nachricht (z. B. bei Missbrauch)
+
+insert_shop_item(...) – neues Item erstellen
+
+update_shop_item(item_id, ...) – bestehendes Item anpassen
+
+delete_shop_item(item_id) – z. B. wenn ein Item entfernt wird
+
+🏅 Medaillen- und Level-System
+update_medal_thresholds(...) – neue Kriterien für Bronze/Silber/Gold
+
+get_users_by_medal(medal_type) – wer hat was erreicht?
+

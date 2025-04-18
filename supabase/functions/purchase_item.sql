@@ -1,104 +1,46 @@
 -- File: purchase_item.sql
--- Funktion zum Kaufen von Items im Shop
--- Parameter:
---   user_id: UUID des Benutzers
---   item_id: UUID des Items
---   quantity: Anzahl der zu kaufenden Items (Standard: 1)
--- Rückgabewert: JSONB mit Status und Details des Kaufs
-
-DROP FUNCTION IF EXISTS public.purchase_item(
-    user_id UUID,
-    item_id UUID,
-    quantity INTEGER
-);
-
-CREATE OR REPLACE FUNCTION public.purchase_item(
-    user_id UUID,
-    item_id UUID,
-    quantity INTEGER DEFAULT 1
-) RETURNS JSONB
-LANGUAGE plpgsql
-AS $$
+CREATE OR REPLACE FUNCTION "public"."purchase_item"("p_user_id" "uuid", "p_item_id" "uuid") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
 DECLARE
-    item_price INTEGER;
-    user_coins INTEGER;
-    current_quantity INTEGER;
-    user_exists BOOLEAN;
-    item_exists BOOLEAN;
-    total_price INTEGER;
+  v_price      integer;
+  v_coins      integer;
+  v_quantity   integer;
+  v_now        timestamp := now();
+  v_response   jsonb;
 BEGIN
-    -- Prüfe ob Benutzer existiert
-    SELECT EXISTS (
-        SELECT 1 FROM profiles 
-        WHERE id = user_id
-    ) INTO user_exists;
-    
-    IF NOT user_exists THEN
-        RETURN jsonb_build_object('status', 'error', 'message', '❌ Benutzer nicht gefunden');
-    END IF;
+  -- 1) Preis und aktuelle Coins abrufen
+  SELECT i.price INTO v_price FROM public.items i WHERE i.id = p_item_id;
+  SELECT total_coins INTO v_coins FROM public.user_stats WHERE user_id = p_user_id;
 
-    -- Prüfe ob Item existiert und hole Preis
-    SELECT EXISTS (
-        SELECT 1 FROM items 
-        WHERE id = item_id
-    ) INTO item_exists;
-    
-    IF NOT item_exists THEN
-        RETURN jsonb_build_object('status', 'error', 'message', '❌ Item existiert nicht');
-    END IF;
+  IF v_coins < v_price THEN
+    RETURN jsonb_build_object('error','Nicht genug Coins');
+  END IF;
 
-    -- Hole Item-Preis
-    SELECT price INTO item_price 
-    FROM items 
-    WHERE id = item_id;
+  -- 2) Coins abziehen
+  UPDATE public.user_stats
+  SET total_coins = total_coins - v_price
+  WHERE user_id = p_user_id;
 
-    -- Berechne Gesamtpreis
-    total_price := item_price * quantity;
+  -- 3) Item ins Inventar legen / Quantity erhöhen
+  SELECT quantity INTO v_quantity
+  FROM public.user_items
+  WHERE user_id = p_user_id AND item_id = p_item_id;
 
-    -- Hole Benutzer-Coins
-    SELECT coins INTO user_coins 
-    FROM profiles 
-    WHERE id = user_id;
+  IF FOUND THEN
+    UPDATE public.user_items
+    SET quantity = quantity + 1
+    WHERE user_id = p_user_id AND item_id = p_item_id;
+  ELSE
+    INSERT INTO public.user_items(user_id,item_id,quantity,is_active,acquired_at)
+    VALUES(p_user_id,p_item_id,1,true,v_now);
+  END IF;
 
-    -- Prüfe ob genug Coins vorhanden
-    IF user_coins < total_price THEN
-        RETURN jsonb_build_object(
-            'status', 'error',
-            'message', '❌ Nicht genug Coins',
-            'required', total_price,
-            'available', user_coins
-        );
-    END IF;
-
-    -- Ziehe Coins ab
-    UPDATE profiles
-    SET coins = coins - total_price
-    WHERE id = user_id;
-
-    -- Prüfe ob Item bereits vorhanden
-    SELECT quantity INTO current_quantity
-    FROM user_items
-    WHERE user_id = purchase_item.user_id 
-    AND item_id = purchase_item.item_id;
-
-    IF FOUND THEN
-        -- Erhöhe Anzahl wenn Item bereits vorhanden
-        UPDATE user_items
-        SET quantity = quantity + purchase_item.quantity
-        WHERE user_id = purchase_item.user_id 
-        AND item_id = purchase_item.item_id;
-    ELSE
-        -- Füge neues Item hinzu
-        INSERT INTO user_items (user_id, item_id, quantity)
-        VALUES (purchase_item.user_id, purchase_item.item_id, purchase_item.quantity);
-    END IF;
-
-    RETURN jsonb_build_object(
-        'status', 'success',
-        'message', '✅ Item erfolgreich gekauft',
-        'quantity', quantity,
-        'total_price', total_price,
-        'remaining_coins', user_coins - total_price
-    );
+  -- 4) Antwort zurückgeben
+  v_response := jsonb_build_object(
+    'status', 'success',
+    'remaining_coins', (v_coins - v_price)
+  );
+  RETURN v_response;
 END;
 $$;

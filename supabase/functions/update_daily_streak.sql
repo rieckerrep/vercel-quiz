@@ -1,139 +1,47 @@
 -- File: update_daily_streak.sql
--- Drop alle möglichen Varianten der Funktion
-DROP FUNCTION IF EXISTS public.update_daily_streak(UUID);
-DROP FUNCTION IF EXISTS update_daily_streak(UUID);
+CREATE OR REPLACE FUNCTION "public"."update_daily_streak"("p_user_id" "uuid") RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$declare
+  v_last_date      date;
+  v_current_streak integer;
+  v_new_streak     integer;
+  v_today          date := timezone('Europe/Berlin', now())::date;
+begin
+  -- Bestehenden Record laden (falls vorhanden)
+  select last_active_date, current_streak
+    into v_last_date, v_current_streak
+  from public.daily_streaks
+  where user_id = p_user_id;
 
-CREATE OR REPLACE FUNCTION public.update_daily_streak(
-    p_user_id UUID
-) RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-    v_current_streak INTEGER;
-    v_max_streak INTEGER;
-    v_last_active_date DATE;
-    v_error_message TEXT;
-    v_berlin_today DATE;
-    v_yesterday DATE;
-    v_streak_bonus INTEGER;
-BEGIN
-    -- Setze Zeitzone auf Berlin
-    v_berlin_today := timezone('Europe/Berlin', now())::DATE;
-    v_yesterday := v_berlin_today - INTERVAL '1 day';
+  -- 1a) Hat der Nutzer heute schon gespielt?
+  if v_last_date = v_today then
+    v_new_streak := v_current_streak;
 
-    -- Hole aktuelle Streak-Daten
-    SELECT current_streak, max_streak, last_active_date
-    INTO v_current_streak, v_max_streak, v_last_active_date
-    FROM daily_streaks
-    WHERE user_id = p_user_id;
+  -- 1b) Hat er gestern gespielt?
+  elsif v_last_date = v_today - interval '1 day' then
+    v_new_streak := v_current_streak + 1;
 
-    -- Erstelle Streak-Eintrag falls nicht vorhanden
-    IF v_current_streak IS NULL THEN
-        INSERT INTO daily_streaks (
-            user_id, 
-            current_streak, 
-            max_streak,
-            last_active_date, 
-            last_updated
-        )
-        VALUES (
-            p_user_id, 
-            1, 
-            1,
-            v_berlin_today, 
-            NOW()
-        )
-        RETURNING current_streak, max_streak, last_active_date
-        INTO v_current_streak, v_max_streak, v_last_active_date;
+  -- 1c) Sonst (erstes Mal oder Pause > 1 Tag): Streak neu starten
+  else
+    v_new_streak := 1;
+  end if;
 
-        -- Erfolgsmeldung für neuen Streak
-        RETURN jsonb_build_object(
-            'status', 'success',
-            'message', 'Neuer Daily Streak gestartet',
-            'current_streak', 1,
-            'max_streak', 1,
-            'streak_bonus', 0
-        );
-    END IF;
+  -- Upsert inkl. max_streak-Update
+  insert into public.daily_streaks(user_id, current_streak, last_active_date, max_streak)
+  values (p_user_id, v_new_streak, v_today, v_new_streak)
+  on conflict (user_id) do update
+    set current_streak   = excluded.current_streak,
+        last_active_date = excluded.last_active_date,
+        max_streak       = greatest(excluded.current_streak, public.daily_streaks.max_streak);
 
-    -- Wenn heute bereits aktiv war
-    IF v_last_active_date = v_berlin_today THEN
-        RETURN jsonb_build_object(
-            'status', 'success',
-            'message', 'Bereits heute aktiv gewesen',
-            'current_streak', v_current_streak,
-            'max_streak', v_max_streak,
-            'streak_bonus', 0
-        );
-    END IF;
+  return v_new_streak;
 
-    -- Wenn gestern aktiv war, erhöhe Streak
-    IF v_last_active_date = v_yesterday THEN
-        v_current_streak := v_current_streak + 1;
-        
-        -- Aktualisiere max_streak wenn nötig
-        IF v_current_streak > v_max_streak THEN
-            v_max_streak := v_current_streak;
-        END IF;
+exception
+  when others then
+    return 0;
+end;$$;
 
-        -- Berechne Streak-Bonus
-        v_streak_bonus := CASE
-            WHEN v_current_streak >= 7 THEN 100  -- 100 Coins Bonus ab 7 Tagen
-            WHEN v_current_streak >= 3 THEN 50   -- 50 Coins Bonus ab 3 Tagen
-            ELSE 25                              -- 25 Coins Basis-Bonus
-        END;
 
-        -- Aktualisiere daily_streaks
-        UPDATE daily_streaks
-        SET current_streak = v_current_streak,
-            max_streak = v_max_streak,
-            last_active_date = v_berlin_today,
-            last_updated = NOW()
-        WHERE user_id = p_user_id;
+ALTER FUNCTION "public"."update_daily_streak"("p_user_id" "uuid") OWNER TO "postgres";
 
-        -- Vergebe Bonus-Coins
-        UPDATE user_stats
-        SET total_coins = total_coins + v_streak_bonus,
-            last_updated = NOW()
-        WHERE user_id = p_user_id;
 
-        RETURN jsonb_build_object(
-            'status', 'success',
-            'message', 'Daily Streak erhöht',
-            'current_streak', v_current_streak,
-            'max_streak', v_max_streak,
-            'streak_bonus', v_streak_bonus
-        );
-    END IF;
-
-    -- Wenn Streak gebrochen wurde, setze zurück
-    UPDATE daily_streaks
-    SET current_streak = 1,
-        last_active_date = v_berlin_today,
-        last_updated = NOW()
-    WHERE user_id = p_user_id;
-
-    -- Basis-Bonus für neue Streak
-    UPDATE user_stats
-    SET total_coins = total_coins + 25,
-        last_updated = NOW()
-    WHERE user_id = p_user_id;
-
-    RETURN jsonb_build_object(
-        'status', 'success',
-        'message', 'Daily Streak zurückgesetzt',
-        'current_streak', 1,
-        'max_streak', v_max_streak,
-        'streak_bonus', 25
-    );
-
-EXCEPTION
-    WHEN OTHERS THEN
-        v_error_message := SQLERRM;
-        RETURN jsonb_build_object(
-            'error', v_error_message,
-            'status', 'error'
-        );
-END;
-$$;
